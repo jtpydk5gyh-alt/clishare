@@ -82,6 +82,28 @@ CREATE TABLE IF NOT EXISTS run_reservations (
     created_at REAL NOT NULL,
     PRIMARY KEY (run_id, attempt_id)
 );
+CREATE TABLE IF NOT EXISTS patch_attempts (
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    run_id TEXT NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    base_sha TEXT NOT NULL,
+    commit_sha TEXT NOT NULL,
+    resources_json TEXT NOT NULL,
+    fences_json TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('pending', 'accepted', 'rejected')),
+    created_at REAL NOT NULL,
+    PRIMARY KEY (project_id, run_id)
+);
+CREATE TABLE IF NOT EXISTS accepted_patches (
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    commit_sha TEXT NOT NULL,
+    base_sha TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    resources_json TEXT NOT NULL,
+    accepted_at REAL NOT NULL,
+    PRIMARY KEY (project_id, commit_sha)
+);
 CREATE TABLE IF NOT EXISTS run_settlements (
     run_id TEXT NOT NULL,
     attempt_id TEXT NOT NULL,
