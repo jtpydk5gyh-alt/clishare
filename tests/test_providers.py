@@ -203,6 +203,139 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(error.exception.code, "text_mode_unavailable")
         run.assert_not_called()
 
+    def test_capabilities_for_known_api_provider_with_key_and_model(self):
+        os.environ["OPENAI_API_KEY"] = "personal-openai-secret"
+        result = providers.capabilities("openai", "api", "gpt-test")
+        self.assertTrue(result["configured"])
+        self.assertTrue(result["verified"])
+        self.assertTrue(result["text"])
+        self.assertFalse(result["tools_mediable"])
+        self.assertIsNone(result["sandbox"])
+        self.assertTrue(result["streaming"])
+        for field in ("context_limit", "output_limit", "usage_available", "price_available"):
+            self.assertEqual(result[field], "unknown")
+        self.assertFalse(result["native_login"])
+        self.assertEqual(result["requires_flags"], [])
+        self.assertEqual(result["endpoint_hint"], "https://api.openai.com/v1/responses")
+        self.assertNotIn("personal-openai-secret", json.dumps(result))
+
+    def test_capabilities_for_known_api_provider_without_key(self):
+        result = providers.capabilities("anthropic", "api", "claude-test")
+        self.assertFalse(result["configured"])
+        self.assertFalse(result["verified"])
+        self.assertEqual(result["endpoint_hint"], "https://api.anthropic.com/v1/messages")
+        self.assertEqual(result["requires_flags"], [])
+
+    def test_capabilities_for_known_api_provider_with_key_but_no_model(self):
+        os.environ["GEMINI_API_KEY"] = "personal-google-secret"
+        for model in (None, "", "   "):
+            with self.subTest(model=model):
+                result = providers.capabilities("google", "api", model)
+                self.assertTrue(result["configured"])
+                self.assertFalse(result["verified"])
+                self.assertEqual(result["endpoint_hint"], "https://generativelanguage.googleapis.com/v1beta/models")
+
+    def test_capabilities_for_unknown_provider_returns_unknown(self):
+        os.environ["OPENAI_API_KEY"] = "personal-openai-secret"
+        with patch("cshcli.providers.shutil.which", return_value="official-binary"), \
+                patch("cshcli.providers.subprocess.run") as run:
+            result = providers.capabilities("not-a-provider", "api", "model")
+        self.assertFalse(result["configured"])
+        self.assertFalse(result["verified"])
+        for field in providers._CAPABILITY_FIELDS:
+            if field not in ("configured", "verified"):
+                self.assertEqual(result[field], "unknown")
+        run.assert_not_called()
+
+    def test_capabilities_for_unknown_mode_returns_unknown(self):
+        os.environ["OPENAI_API_KEY"] = "personal-openai-secret"
+        with patch("cshcli.providers.shutil.which", return_value="official-binary"), \
+                patch("cshcli.providers.subprocess.run") as run:
+            for provider in ("openai", "codex", "claude-code", "gemini-cli"):
+                with self.subTest(provider=provider):
+                    result = providers.capabilities(provider, "telepathy", "model")
+                    self.assertFalse(result["configured"])
+                    self.assertFalse(result["verified"])
+                    for field in providers._CAPABILITY_FIELDS:
+                        if field not in ("configured", "verified"):
+                            self.assertEqual(result[field], "unknown")
+        run.assert_not_called()
+
+    def test_capabilities_for_cli_provider_when_binary_missing(self):
+        with patch("cshcli.providers.shutil.which", return_value=None), \
+                patch("cshcli.providers.subprocess.run") as run:
+            result = providers.capabilities("claude-code", "cli")
+        self.assertFalse(result["configured"])
+        self.assertFalse(result["verified"])
+        self.assertTrue(result["native_login"])
+        self.assertEqual(result["requires_flags"], [])
+        for field in ("text", "tools_mediable", "sandbox", "streaming", "context_limit",
+                      "output_limit", "usage_available", "price_available"):
+            self.assertEqual(result[field], "unknown")
+        run.assert_not_called()
+
+    def test_capabilities_for_cli_provider_when_binary_present_and_help_lists_flags(self):
+        help_text = "--sandbox read-only --json --ephemeral --ignore-user-config --model"
+        with patch("cshcli.providers.shutil.which", return_value="official-codex"), \
+                patch("cshcli.providers.subprocess.run", return_value=subprocess.CompletedProcess(
+                    [], 0, help_text, "")) as run:
+            result = providers.capabilities("codex", "cli")
+        self.assertEqual(run.call_args.args[0], ["official-codex", "exec", "--help"])
+        self.assertTrue(result["configured"])
+        self.assertTrue(result["verified"])
+        self.assertEqual(result["sandbox"], "read-only")
+        self.assertEqual(result["requires_flags"], ["--sandbox", "--json", "--ephemeral", "--ignore-user-config"])
+        self.assertNotIn("--skip-git-repo-check", result["requires_flags"])
+        self.assertEqual(result["price_available"], "unknown")
+
+    def test_capabilities_cli_sandbox_per_provider_without_inventing_it(self):
+        cases = (("claude-code", "official-claude", "--tools --safe-mode --output-format --model",
+                  "safe-mode", ["--tools", "--safe-mode", "--output-format"]),
+                 ("gemini-cli", "official-gemini", "--model --yolo", "unknown", []),
+                 ("codex", "official-codex", "--json --model", "unknown", ["--json"]))
+        for provider, binary, help_text, sandbox, flags in cases:
+            with self.subTest(provider=provider):
+                arguments = ["official-codex", "exec", "--help"] if provider == "codex" else [binary, "--help"]
+                with patch("cshcli.providers.shutil.which", return_value=binary), \
+                        patch("cshcli.providers.subprocess.run", return_value=subprocess.CompletedProcess(
+                            [], 0, help_text, "")) as run:
+                    result = providers.capabilities(provider, "cli")
+                self.assertEqual(run.call_args.args[0], arguments)
+                self.assertTrue(result["configured"])
+                self.assertTrue(result["verified"])
+                self.assertEqual(result["sandbox"], sandbox)
+                self.assertEqual(result["requires_flags"], flags)
+                self.assertTrue(result["native_login"])
+
+    def test_capabilities_falls_back_to_unverified_when_help_fails(self):
+        with patch("cshcli.providers.shutil.which", return_value="official-codex"), \
+                patch("cshcli.providers.subprocess.run", return_value=subprocess.CompletedProcess(
+                    [], 1, "private stdout", "private stderr")):
+            result = providers.capabilities("codex", "cli")
+        self.assertFalse(result["verified"])
+        self.assertFalse(result["configured"])
+        self.assertTrue(result["native_login"])
+        self.assertEqual(result["requires_flags"], [])
+        self.assertEqual(result["sandbox"], "unknown")
+        self.assertNotIn("private", json.dumps(result))
+
+    def test_capabilities_does_not_invent_pricing(self):
+        os.environ["OPENAI_API_KEY"] = "personal-openai-secret"
+        help_text = "--sandbox read-only --json --safe-mode --output-format --model"
+        with patch("cshcli.providers.shutil.which", return_value="official-binary"), \
+                patch("cshcli.providers.subprocess.run", return_value=subprocess.CompletedProcess(
+                    [], 0, help_text, "")):
+            cases = (("openai", "api", "gpt-test"), ("anthropic", "api", None),
+                     ("google", "api", "gemini-test"), ("codex", "cli", None),
+                     ("claude-code", "cli", None), ("gemini-cli", "cli", None),
+                     ("not-a-provider", "api", "model"), ("openai", "telepathy", "gpt-test"))
+            for provider, mode, model in cases:
+                with self.subTest(provider=provider, mode=mode):
+                    result = providers.capabilities(provider, mode, model)
+                    for field in ("price_available", "context_limit", "output_limit", "usage_available"):
+                        self.assertEqual(result[field], "unknown")
+                        self.assertNotIsInstance(result[field], (int, float))
+
     def test_redirect_does_not_forward_credentials(self):
         self.assertIsNone(providers._NoRedirect().redirect_request(None, None, 302, "Found", {}, "https://evil.invalid"))
 
