@@ -39,10 +39,12 @@ session. Verification used a standard CPython 3.12 installation; the
 interpreter path is machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests -v`
-returned **345 passing tests in 150 seconds**, with 2 skipped: the symbolic link
-cases on a host that does not grant the privilege, while the Windows junction
-case runs. Concurrent tests use eleven synchronised threads; they do not yet
-represent eleven distributed processes.
+returned **350 passing tests in 130 seconds**, with 4 skipped: two symbolic link
+cases on a host that does not grant the privilege, and two PostgreSQL cases
+that need a real server, which does not exist on this machine. The Windows
+junction case runs. Concurrent tests use eleven synchronised threads and, for
+deployments, eleven processes against one environment; they do not yet
+represent eleven distributed machines.
 
 `python -m compileall -q src tests scripts`, `python scripts/cshcli.py --help`,
 `python scripts/guard_secrets.py --all`, and
