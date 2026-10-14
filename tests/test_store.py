@@ -335,6 +335,178 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(final["items"][0]["content"], content)
         self.assertIsNone(final["next_cursor"])
 
+    def test_memory_accepts_kind_scope_status_and_evidence(self):
+        pid, uid = self.project["id"], self.owner["id"]
+        stored = self.store.put_memory(
+            uid, pid, "decisions/auth", "use sqlite-wal", 0,
+            kind="decision", scope="project", status="verified",
+            source_commit="abc123def", evidence=["docs/spec.md", "tests/test_store.py"],
+            expires_at=1700000000.5,
+        )
+        self.assertEqual(stored["kind"], "decision")
+        self.assertEqual(stored["scope"], "project")
+        self.assertEqual(stored["status"], "verified")
+        self.assertEqual(stored["source_commit"], "abc123def")
+        self.assertEqual(stored["evidence"], ["docs/spec.md", "tests/test_store.py"])
+        self.assertEqual(stored["expires_at"], 1700000000.5)
+        listed = self.store.list_memory(uid, pid)
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]["kind"], "decision")
+        self.assertEqual(listed[0]["scope"], "project")
+        self.assertEqual(listed[0]["status"], "verified")
+        self.assertEqual(listed[0]["source_commit"], "abc123def")
+        self.assertEqual(listed[0]["evidence"], ["docs/spec.md", "tests/test_store.py"])
+        self.assertEqual(listed[0]["expires_at"], 1700000000.5)
+        page = self.store.list_memory_page(uid, pid)
+        self.assertEqual(len(page["items"]), 1)
+        self.assertEqual(page["items"][0]["kind"], "decision")
+        self.assertEqual(page["items"][0]["evidence"], ["docs/spec.md", "tests/test_store.py"])
+        legacy = self.store.put_memory(uid, pid, "context", "no metadata here", 0)
+        self.assertIsNone(legacy.get("kind"))
+        self.assertIsNone(legacy.get("scope"))
+        self.assertEqual(legacy["status"], "proposed")
+        self.assertIsNone(legacy.get("source_commit"))
+        self.assertIsNone(legacy.get("evidence"))
+        self.assertIsNone(legacy.get("expires_at"))
+        self.store.put_memory(
+            uid, pid, "handoffs/task-7", "see review", 0,
+            kind="handoff", scope="task", evidence=[],
+        )
+        listed = self.store.list_memory(uid, pid)
+        by_key = {item["key"]: item for item in listed}
+        self.assertEqual(by_key["handoffs/task-7"]["evidence"], [])
+        self.assertEqual(by_key["handoffs/task-7"]["status"], "proposed")
+
+    def test_memory_rejects_invalid_kind_or_status(self):
+        pid, uid = self.project["id"], self.owner["id"]
+        for bad_kind in ("note", "", "DECISION", 17, True):
+            self.assert_domain(
+                400,
+                lambda value=bad_kind: self.store.put_memory(
+                    uid, pid, f"k-{value!r}", "content", 0, kind=value,
+                ),
+                "invalid_memory_metadata",
+            )
+        for bad_scope in ("global", "", 17, True):
+            self.assert_domain(
+                400,
+                lambda value=bad_scope: self.store.put_memory(
+                    uid, pid, f"s-{value!r}", "content", 0, scope=value,
+                ),
+                "invalid_memory_metadata",
+            )
+        for bad_status in ("draft", "", 17, True):
+            self.assert_domain(
+                400,
+                lambda value=bad_status: self.store.put_memory(
+                    uid, pid, f"st-{value!r}", "content", 0, status=value,
+                ),
+                "invalid_memory_metadata",
+            )
+        self.assert_domain(
+            400,
+            lambda: self.store.put_memory(
+                uid, pid, "ev-1", "content", 0, evidence="not-a-list",
+            ),
+            "invalid_memory_metadata",
+        )
+        self.assert_domain(
+            400,
+            lambda: self.store.put_memory(
+                uid, pid, "ev-2", "content", 0, evidence=[1, 2],
+            ),
+            "invalid_memory_metadata",
+        )
+        self.assert_domain(
+            400,
+            lambda: self.store.put_memory(
+                uid, pid, "exp-1", "content", 0, expires_at="1700000000",
+            ),
+            "invalid_memory_metadata",
+        )
+        self.assert_domain(
+            400,
+            lambda: self.store.put_memory(
+                uid, pid, "sc-1", "content", 0, source_commit=42,
+            ),
+            "invalid_memory_metadata",
+        )
+        self.assertEqual(self.store.list_memory(uid, pid), [])
+
+    def test_memory_superseded_filter_excludes_verified(self):
+        pid, uid = self.project["id"], self.owner["id"]
+        superseded = self.store.put_memory(
+            uid, pid, "old-decision", "use postgres", 0,
+            kind="decision", scope="project", status="superseded",
+            source_commit="abc", evidence=["docs/old.md"],
+        )
+        verified = self.store.put_memory(
+            uid, pid, "new-decision", "use sqlite-wal", 0,
+            kind="decision", scope="project", status="verified",
+            source_commit="def", evidence=["docs/new.md", "tests/test_x.py"],
+        )
+        by_key = {item["key"]: item for item in self.store.list_memory(uid, pid)}
+        self.assertEqual(set(by_key), {superseded["key"], verified["key"]})
+        self.assertEqual(by_key[superseded["key"]]["status"], "superseded")
+        self.assertEqual(by_key[verified["key"]]["status"], "verified")
+        self.assertNotEqual(by_key[superseded["key"]]["status"], by_key[verified["key"]]["status"])
+        self.assertEqual(by_key[superseded["key"]]["evidence"], ["docs/old.md"])
+        self.assertEqual(by_key[verified["key"]]["evidence"], ["docs/new.md", "tests/test_x.py"])
+        self.assertIsNone(by_key[superseded["key"]].get("expires_at"))
+        self.assertEqual(by_key[verified["key"]]["version"], 1)
+        page = self.store.list_memory_page(uid, pid)
+        page_by_key = {item["key"]: item for item in page["items"]}
+        self.assertEqual(page_by_key[superseded["key"]]["status"], "superseded")
+        self.assertEqual(page_by_key[verified["key"]]["status"], "verified")
+
+    def test_memory_legacy_entries_without_metadata_still_read(self):
+        pid, uid = self.project["id"], self.owner["id"]
+        with closing(sqlite3.connect(self.path)) as connection:
+            connection.executescript(
+                f"""
+                DROP TABLE memory;
+                CREATE TABLE memory (
+                    project_id TEXT NOT NULL,
+                    key TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    version INTEGER NOT NULL CHECK (version > 0),
+                    author_id TEXT NOT NULL,
+                    updated_at REAL NOT NULL,
+                    PRIMARY KEY (project_id, key)
+                );
+                INSERT INTO memory(project_id, key, content, version, author_id, updated_at)
+                VALUES ('{pid}', 'legacy-key', 'legacy-content', 1, '{uid}', 10000.0);
+                """
+            )
+            connection.commit()
+        reopened = Store(self.path, clock=lambda: self.now)
+        listed = reopened.list_memory(uid, pid)
+        self.assertEqual(len(listed), 1)
+        legacy = listed[0]
+        self.assertEqual(legacy["key"], "legacy-key")
+        self.assertEqual(legacy["content"], "legacy-content")
+        self.assertEqual(legacy["version"], 1)
+        self.assertEqual(legacy["author_id"], uid)
+        self.assertEqual(legacy["status"], "proposed")
+        self.assertIsNone(legacy.get("kind"))
+        self.assertIsNone(legacy.get("scope"))
+        self.assertIsNone(legacy.get("source_commit"))
+        self.assertIsNone(legacy.get("evidence"))
+        self.assertIsNone(legacy.get("expires_at"))
+        new = reopened.put_memory(
+            uid, pid, "fresh-key", "fresh-content", 0,
+            kind="decision", status="verified", evidence=["docs/spec.md"],
+        )
+        self.assertEqual(new["kind"], "decision")
+        self.assertEqual(new["status"], "verified")
+        self.assertEqual(new["evidence"], ["docs/spec.md"])
+        page = reopened.list_memory_page(uid, pid)
+        self.assertEqual(len(page["items"]), 2)
+        fresh = next(item for item in page["items"] if item["key"] == "fresh-key")
+        self.assertEqual(fresh["kind"], "decision")
+        self.assertEqual(fresh["status"], "verified")
+        self.assertEqual(fresh["evidence"], ["docs/spec.md"])
+
 
 if __name__ == "__main__":
     unittest.main()
