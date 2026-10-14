@@ -1,6 +1,8 @@
 import importlib.util
 import io
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -81,6 +83,55 @@ class GuardTests(unittest.TestCase):
         other = self.write(os.path.join("tests", "test_other.py"),
                            "contact: jtpydk5gyh@privaterelay.appleid.com\n")
         self.assertTrue(guard.scan([other], ""))
+
+    def test_the_installer_refuses_to_overwrite_an_existing_hook(self):
+        installer = Path(__file__).resolve().parents[1] / "scripts" / "install_hooks.py"
+        with tempfile.TemporaryDirectory() as temp:
+            repository = Path(temp)
+            subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+            (repository / "scripts").mkdir()
+            (repository / "scripts" / "guard_secrets.py").write_text("", encoding="utf-8")
+            hooks = repository / ".git" / "hooks"
+            hooks.mkdir(exist_ok=True)
+            existing = hooks / "pre-commit"
+            existing.write_text("#!/bin/sh\necho mine\n", encoding="utf-8", newline="\n")
+
+            result = subprocess.run([sys.executable, str(installer)],
+                                    cwd=repository, capture_output=True, text=True,
+                                    encoding="utf-8", errors="replace")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("ya existe un hook", result.stderr)
+            self.assertEqual(existing.read_text(encoding="utf-8"), "#!/bin/sh\necho mine\n")
+
+    def test_the_installer_refuses_when_the_guard_is_missing(self):
+        installer = Path(__file__).resolve().parents[1] / "scripts" / "install_hooks.py"
+        with tempfile.TemporaryDirectory() as temp:
+            repository = Path(temp)
+            subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+            result = subprocess.run([sys.executable, str(installer)],
+                                    cwd=repository, capture_output=True, text=True,
+                                    encoding="utf-8", errors="replace")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("no existe el guard", result.stderr)
+            self.assertFalse((repository / ".git" / "hooks" / "pre-commit").exists())
+
+    def test_the_installer_creates_the_hook_when_there_is_none(self):
+        installer = Path(__file__).resolve().parents[1] / "scripts" / "install_hooks.py"
+        with tempfile.TemporaryDirectory() as temp:
+            repository = Path(temp)
+            subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+            (repository / "scripts").mkdir()
+            guard = repository / "scripts" / "guard_secrets.py"
+            guard.write_text("", encoding="utf-8")
+            result = subprocess.run([sys.executable, str(installer)],
+                                    cwd=repository, capture_output=True, text=True,
+                                    encoding="utf-8", errors="replace")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            hook = repository / ".git" / "hooks" / "pre-commit"
+            self.assertTrue(hook.is_file())
+            body = hook.read_text(encoding="utf-8")
+            self.assertTrue(body.startswith("#!/bin/sh"))
+            self.assertIn("guard_secrets.py", body)
 
     def test_identity_findings_rejects_a_wrong_email(self):
         with mock.patch.object(guard.subprocess, "run") as run:
