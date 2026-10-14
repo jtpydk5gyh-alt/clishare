@@ -104,6 +104,14 @@ CREATE TABLE IF NOT EXISTS accepted_patches (
     accepted_at REAL NOT NULL,
     PRIMARY KEY (project_id, commit_sha)
 );
+CREATE TABLE IF NOT EXISTS authorization_grants (
+    user_id TEXT NOT NULL REFERENCES users(id),
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    scope TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    revoked_at REAL,
+    PRIMARY KEY (user_id, project_id, scope)
+);
 CREATE TABLE IF NOT EXISTS run_settlements (
     run_id TEXT NOT NULL,
     attempt_id TEXT NOT NULL,
@@ -581,9 +589,65 @@ class Store:
                 events.append(event)
             return events
 
-    def authorization_generation(self, user_id: str, project_id: str, agent_id: str | None = None) -> int:
+    def authorization_grant(self, connection, user_id: str, project_id: str,
+                             agent_id: str | None = None) -> int:
         if agent_id is not None:
             _text(agent_id, "agent_id", 120)
+        scope = user_id if agent_id is None else f"{user_id}:{agent_id}"
+        row = connection.execute(
+            "SELECT generation FROM authorization_grants WHERE user_id = ? AND project_id = ? AND scope = ?",
+            (user_id, project_id, scope),
+        ).fetchone()
+        if row is not None:
+            return int(row["generation"])
+        base = connection.execute(
+            "SELECT generation FROM authorization_grants WHERE user_id = ? AND project_id = ? AND scope = ?",
+            (user_id, project_id, user_id),
+        ).fetchone()
+        generation = int(base["generation"]) if base is not None else 1
+        connection.execute(
+            "INSERT INTO authorization_grants(user_id, project_id, scope, generation, revoked_at)"
+            " VALUES (?, ?, ?, ?, NULL)",
+            (user_id, project_id, scope, generation),
+        )
+        return generation
+
+    def authorization_generation(self, user_id: str, project_id: str, agent_id: str | None = None) -> int:
         with self._connection() as connection:
             self._authorize(connection, user_id, project_id)
-        return 1
+            return self.authorization_grant(connection, user_id, project_id, agent_id)
+
+    def revoke_authorization(self, actor_id: str, project_id: str, user_id: str,
+                             agent_id: str | None = None) -> dict:
+        with self._connection(write=True) as connection:
+            self._authorize(connection, actor_id, project_id, owner=True)
+            if not connection.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone():
+                raise DomainError(404, "user_not_found", "El usuario no existe.")
+            if agent_id is not None:
+                _text(agent_id, "agent_id", 120)
+                key = f"{user_id}:{agent_id}"
+            else:
+                key = user_id
+            current = connection.execute(
+                "SELECT generation FROM authorization_grants WHERE user_id = ? AND project_id = ? AND scope = ?",
+                (user_id, project_id, key),
+            ).fetchone()
+            if current is None:
+                base = self.authorization_grant(connection, user_id, project_id)
+                connection.execute(
+                    "UPDATE authorization_grants SET generation = ?, revoked_at = ?"
+                    " WHERE user_id = ? AND project_id = ? AND scope = ?",
+                    (base + 1, self.clock(), user_id, project_id, key),
+                )
+                generation = base + 1
+            else:
+                generation = int(current["generation"]) + 1
+                connection.execute(
+                    "UPDATE authorization_grants SET generation = ?, revoked_at = ?"
+                    " WHERE user_id = ? AND project_id = ? AND scope = ?",
+                    (generation, self.clock(), user_id, project_id, key),
+                )
+            self._event(connection, actor_id, project_id, "authorization.revoked", {
+                "user_id": user_id, "agent_id": agent_id, "generation": generation,
+            })
+        return {"user_id": user_id, "agent_id": agent_id, "generation": generation}

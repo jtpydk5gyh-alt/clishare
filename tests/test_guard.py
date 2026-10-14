@@ -133,6 +133,43 @@ class GuardTests(unittest.TestCase):
             self.assertTrue(body.startswith("#!/bin/sh"))
             self.assertIn("guard_secrets.py", body)
 
+    def test_the_report_never_prints_the_detected_value(self):
+        secret = "sk-" + "q" * 24
+        name = self.write("doc.md", "key " + secret + "\n")
+        findings = guard.scan([name], "")
+        self.assertTrue(findings)
+        for _, _, _, sample in findings:
+            self.assertNotIn("qqqq", guard.redact_sample(sample))
+            self.assertNotEqual(guard.redact_sample(sample), sample)
+
+    def test_the_redacted_sample_keeps_the_shape_not_the_content(self):
+        redacted = guard.redact_sample("sk-qqqqqqqqqqqqqqqqqqqqqqqqqq")
+        self.assertNotIn("qqqq", redacted)
+        self.assertIn("caracteres", redacted)
+        self.assertRegex(redacted, r"\d+ caracteres")
+
+    def test_the_redacted_sample_masks_short_values_completely(self):
+        redacted = guard.redact_sample("ab@cd")
+        self.assertNotIn("ab", redacted.replace("caracteres", ""))
+
+    def test_main_output_contains_no_fragment_of_the_secret(self):
+        secret = "sk-" + "z" * 24
+        with tempfile.TemporaryDirectory() as temp:
+            repository = Path(temp)
+            subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+            target = repository / "doc.md"
+            target.write_text("key " + secret + "\n", encoding="utf-8")
+            subprocess.run(["git", "add", "doc.md"], cwd=repository, check=True)
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), "doc.md"],
+                cwd=repository, capture_output=True, text=True, encoding="utf-8",
+                errors="replace")
+            output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn("zzzz", output)
+        self.assertNotIn(secret, output)
+        self.assertIn("doc.md:1", output)
+
     def test_identity_findings_rejects_a_wrong_email(self):
         with mock.patch.object(guard.subprocess, "run") as run:
             run.side_effect = [

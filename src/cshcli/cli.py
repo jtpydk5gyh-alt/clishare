@@ -119,6 +119,7 @@ def parser():
     patch_accept.add_argument("--commit-sha", required=True)
     patch_accept.add_argument("--generation", type=int, default=1)
     patch_accept.add_argument("--lease", action="append", required=True, metavar="RESOURCE=FENCE")
+    patch_accept.add_argument("--repo", help="Ruta del repositorio para verificar los commits con Git")
     patch_list = patch_commands.add_parser("list", help="Parches aceptados del proyecto")
     patch_list.add_argument("project")
     patch_list.add_argument("--limit", type=int, default=10)
@@ -232,10 +233,12 @@ def _patch(client, args):
             raise DomainError(400, "invalid_lease_fence",
                               f"Usa RESOURCE=FENCE en --lease; recibido: {entry}")
         fences[resource] = int(fence)
-    return client.request("POST", f"{base}/patches/accept",
-                          {"run_id": args.run_id, "authorization_generation": args.generation,
-                           "lease_fences": fences, "base_sha": args.base_sha,
-                           "commit_sha": args.commit_sha})
+    payload = {"run_id": args.run_id, "authorization_generation": args.generation,
+               "lease_fences": fences, "base_sha": args.base_sha,
+               "commit_sha": args.commit_sha}
+    if args.repo:
+        payload["repo"] = args.repo
+    return client.request("POST", f"{base}/patches/accept", payload)
 
 
 def main(argv=None):

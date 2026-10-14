@@ -94,7 +94,7 @@ class Policy:
             raise DomainError(400, "invalid_input", "authorization_generation must be an integer.")
         with self.store._connection(write=True) as connection:
             self.store._authorize(connection, user_id, project_id, write=True)
-            current = self.store.authorization_generation(user_id, project_id)
+            current = self.store.authorization_grant(connection, user_id, project_id)
             if authorization_generation != current:
                 raise DomainError(
                     409, "generation_stale",
@@ -177,6 +177,12 @@ class Policy:
                 raise DomainError(
                     403, "reservation_foreign",
                     "This reservation belongs to another member; you cannot settle it.",
+                )
+            current = self.store.authorization_grant(connection, user_id, project_id)
+            if reservation["authorization_generation"] != current:
+                raise DomainError(
+                    409, "generation_stale",
+                    "The authorisation was revoked while this run was open; its usage cannot be settled.",
                 )
             settled = connection.execute(
                 "SELECT 1 FROM run_settlements WHERE run_id = ? AND attempt_id = ?", (run_id, attempt_id)
