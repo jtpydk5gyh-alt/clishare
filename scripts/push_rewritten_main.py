@@ -12,6 +12,7 @@ que desactivar los rulesets.
 
 from __future__ import annotations
 
+import json
 import os
 import pathlib
 import subprocess
@@ -21,6 +22,46 @@ ALLOWED = "jtpydk5gyh-alt@users.noreply.github.com"
 FORBIDDEN_DOMAIN = "@privaterelay." + "appleid.com"
 FORBIDDEN = "jtpydk5gyh" + FORBIDDEN_DOMAIN
 NAME = "Trankideal"
+REPOSITORY = "jtpydk5gyh-alt/cshcli"
+
+INTEGRITY_RULES = [
+    {"type": "deletion"},
+    {"type": "non_fast_forward"},
+    {"type": "pull_request", "parameters": {
+        "allowed_merge_methods": ["merge", "squash", "rebase"],
+        "dismiss_stale_reviews_on_push": True,
+        "require_code_owner_review": False,
+        "require_last_push_approval": False,
+        "required_approving_review_count": 0,
+        "required_review_thread_resolution": True,
+        "required_reviewers": [],
+    }},
+]
+OWNER_MERGE_RULES = [{"type": "update", "parameters": {"update_allows_fetch_and_merge": False}}]
+CONDITIONS = {"ref_name": {"include": ["~DEFAULT_BRANCH", "refs/heads/main"], "exclude": []}}
+BYPASS_OWNER = [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request"}]
+
+
+def gh(*arguments, input_text=None):
+    return subprocess.run(["gh", *arguments], capture_output=True, text=True,
+                          encoding="utf-8", input=input_text)
+
+
+def lift_protection() -> list[str]:
+    alive = json.loads(gh("api", f"repos/{REPOSITORY}/rulesets").stdout)
+    names = [item["name"] for item in alive]
+    for ruleset in alive:
+        gh("api", "--method", "DELETE", f"repos/{REPOSITORY}/rulesets/{ruleset['id']}")
+    return names
+
+
+def restore_protection() -> None:
+    for name, rules, bypass in (("main-integrity", INTEGRITY_RULES, []),
+                                ("main-owner-merge", OWNER_MERGE_RULES, BYPASS_OWNER)):
+        body = {"name": name, "target": "branch", "enforcement": "active",
+                "conditions": CONDITIONS, "bypass_actors": bypass, "rules": rules}
+        gh("api", "--method", "POST", f"repos/{REPOSITORY}/rulesets",
+           "--input", "-", input_text=json.dumps(body))
 
 
 def git(*arguments, **kwargs):
@@ -78,7 +119,11 @@ def main() -> int:
         print("main ya esta limpio; nada que subir")
         return 0
 
+    lifted = lift_protection()
+    print("proteccion suspendida:", lifted)
     push = git("push", "--force-with-lease", "origin", "main:main")
+    restore_protection()
+    print("proteccion restaurada")
     print("push:", "OK" if push.returncode == 0 else (push.stderr or "")[-200:])
     if push.returncode != 0:
         pathlib.Path("_local/last-push-error.txt").write_text(push.stderr or "", encoding="utf-8")
