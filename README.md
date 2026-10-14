@@ -18,6 +18,7 @@ and AI accounts while sharing decisions and reserving files.
 | Isolated worktrees | Each run gets its own detached worktree; traversal, absolute paths, reserved Windows names, symbolic links and junctions are refused |
 | Revocable authorisation | A generation counter per member and per agent; revoking one invalidates the runs already open |
 | Mediated runner | Every write validates its lease against the coordinator at the moment it happens, stops on heartbeat loss, and has no method that runs a command |
+| Task DAG | Seven states, dependency cycles refused on create and on modify, and claiming a task takes its leases in the same transaction that marks it running |
 | AI providers | OpenAI, Anthropic, Google, **MiniMax**, plus the official Codex, Claude Code and Gemini CLIs, with a capability probe that never invents pricing |
 | Personal data guard | A pre-commit hook and a **required** CI check that refuse personal addresses, private relay addresses, user paths and a git identity other than the noreply form. The guard reads the staged index, and fails closed if git cannot deliver a file |
 

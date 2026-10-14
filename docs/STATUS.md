@@ -27,6 +27,7 @@ plan lives in [the main document](superpowers/plans/2026-10-14-cshcli.md).
 | Native direct OAuth | Proposed, conditioned on official mechanism and eligibility |
 | Personal data guard | Pre-commit hook and a **required** CI check; refuses personal emails, private relay addresses, user paths and a non-noreply identity. Reads the staged index and fails closed |
 | Sessions and revocation (7) | `Identity` issues expiring sessions stored as HMAC hashes, and `authorization_generation` refuses work queued before a revocation |
+| Task DAG (8B) | `TaskService` with seven states, cycle refusal on create and modify, and `claim` that acquires leases in the same transaction |
 | Branch governance | Ruleset `main-integrity`: no force-push, no deletion, no direct updates, and `Personal data guard` required to merge |
 
 ## Local evidence
@@ -37,7 +38,7 @@ session. Verification used a standard CPython 3.12 installation; the
 interpreter path is machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests -v`
-returned **284 passing tests in 111 seconds**, with 2 skipped: the symbolic link
+returned **306 passing tests in 149 seconds**, with 2 skipped: the symbolic link
 cases on a host that does not grant the privilege, while the Windows junction
 case runs. Concurrent tests use eleven synchronised threads; they do not yet
 represent eleven distributed processes.

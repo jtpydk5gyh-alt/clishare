@@ -34,6 +34,12 @@ once it leaves alpha.
   noreply form.
 
 ### Added
+- Milestone 8B: `TaskService` with the `queued`, `running`, `blocked`,
+  `review`, `merged`, `failed` and `cancelled` states. A dependency cycle is
+  refused when a task is created and again when it is modified. `claim`
+  checks dependencies, checks state and acquires the leases inside one write
+  transaction, so a task is never running without holding what it needs and
+  leases are never held by something that is not running.
 - Milestone 7: `Identity` issues expiring sessions stored only as HMAC-SHA256
   hashes, revokes one session without ending the rest, and raises
   `authorization_generation` so work queued before a revocation cannot act

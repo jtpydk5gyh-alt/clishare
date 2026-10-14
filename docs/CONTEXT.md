@@ -112,7 +112,7 @@ escritura sobre la misma base, porque eso produce `database is locked`.
 | 6C Herramientas mediadas y sandbox | **En curso.** `Runner` con escrituras mediadas, validación de lease inmediata y heartbeat; sin ejecución arbitraria |
 | 7 Servicio remoto y PostgreSQL | **En curso.** `Identity` con sesiones revocables; falta PostgreSQL real y despliegue HTTPS |
 | 8A Puerta de publicación | Completo: fences, generación, propiedad, caducidad, SHA, Git |
-| 8B DAG y cola de integración | Pendiente |
+| 8B DAG y cola de integración | **En curso.** `TaskService` con estados, ciclos y `claim` atómico; falta la cola que aplica parches en un checkout |
 | 9 Despliegues con rollback | Pendiente |
 | 10 OAuth nativo elegible | Pendiente |
 | 11 Presupuestos y observabilidad | Pendiente |
@@ -226,6 +226,34 @@ vacía** antes de invitar a nadie. No hay PostgreSQL en esta máquina, y la
 regla del proyecto es no añadir dependencias de runtime durante el piloto: un
 driver de PostgreSQL sería la primera. Se deja escrito como pendiente en vez
 de entregar una versión que solo funciona con SQLite y diga que cumple.
+
+## 8B: el DAG, y por qué `claim` no se puede partir en dos
+
+Cinco agentes ven la misma pila y se la disputan. El fallo que este módulo
+existe para evitar es una tarea marcada `running` cuyas leases nunca se
+adquirieron, o leases tomadas por una tarea que nunca arrancó porque una
+dependencia falló. Los dos son peores que una negativa, porque los dos parecen
+progreso.
+
+Por eso `claim` hace la comprobación de dependencias, la de estado y la
+adquisición de leases **dentro de una sola transacción de escritura**. No hay
+ventana en la que una tarea esté corriendo sin tener lo que necesita, ni
+ventana en la que alguien tenga leases sin estar corriendo. Si una lease falla
+a mitad del lote, las ya tomadas se expiran en la misma transacción.
+
+Estados: `queued`, `running`, `blocked`, `review`, `merged`, `failed`,
+`cancelled`. Una tarea con dependencias nace `blocked` y solo pasa a `queued`
+cuando **todas** sus dependencias llegan a `merged`. Que estén en `review` no
+basta: una dependencia en revisión todavía puede fallar, así que desbloquear
+antes de tiempo sería un deadlock esperando a ocurrir. Una dependencia
+cancelada deja a sus dependientes bloqueados para siempre, que es la respuesta
+honesta: no hay trabajo que hacer, y fingir lo contrario sería peor.
+
+Un ciclo se rechaza al crear y se vuelve a rechazar al modificar. Comprobarlo
+solo al crear dejaría pasar por la puerta de atrás un ciclo colado en una
+edición posterior. `Store.acquire_leases` se refactorizó para que su lógica
+viva en un `_acquire(connection, ...)` reutilizable; sin eso no había forma de
+adquirir leases dentro de la transacción de `claim`.
 
 ## Corrección de autoría por squash — verificada y purgada
 
