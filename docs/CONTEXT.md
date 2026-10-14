@@ -81,6 +81,17 @@ escritura sobre la misma base, porque eso produce `database is locked`.
   `git stash push -u` y un clon limpio.
 - **Verificar después del commit**, no antes. Los tests en verde sobre un
   árbol que luego se pierde no prueban nada.
+- **Un `reset --hard` sin mirar destruye trabajo, también el propio.**
+  `push_rewritten_main.py` incumplía la regla de arriba y se comió un arreglo
+  sin commitear. Ya rechaza el árbol sucio antes de resetear.
+- **Un control de seguridad no se relaja para que pase el código propio.** El
+  guard ve un arroba seguido de algo con punto, y toma por correo cualquier
+  decorador con nombre cualificado. Al escribir
+  `tests/test_remote_postgres.py` bloqueó el commit; la respuesta fue
+  reescribir el test con `self.skipTest()` en `setUp`, no tocar el patrón. Y
+  al documentarlo aquí, el párrafo se trippinga a sí mismo, que es la mejor
+  prueba de que el control funciona. Merece la pena tenerlo en cuenta antes de
+  escribir más tests con decoradores.
 
 ## Herramientas propias
 
@@ -110,7 +121,7 @@ escritura sobre la misma base, porque eso produce `database is locked`.
 | 6A Contexto, política, broker | Completo: `context.py`, `policy.py`, `broker.py`, capacidades |
 | 6B Worktree aislado | Completo: rutas, symlinks y junctions rechazados |
 | 6C Herramientas mediadas y sandbox | **En curso.** `Runner` con escrituras mediadas, validación de lease inmediata y heartbeat; sin ejecución arbitraria |
-| 7 Servicio remoto y PostgreSQL | **En curso.** `Identity` con sesiones revocables; falta PostgreSQL real y despliegue HTTPS |
+| 7 Servicio remoto y PostgreSQL | **Parcial y declarado.** Driver como extra, `RemoteStore` con bloqueo de fila, migración, compose y OPERATIONS.md. El store se niega a servir mientras diga `unverified` |
 | 8A Puerta de publicación | Completo: fences, generación, propiedad, caducidad, SHA, Git |
 | 8B DAG y cola de integración | **En curso.** `TaskService` con estados, ciclos y `claim` atómico; falta la cola que aplica parches en un checkout |
 | 9 Despliegues con rollback | Pendiente |
@@ -226,6 +237,40 @@ vacía** antes de invitar a nadie. No hay PostgreSQL en esta máquina, y la
 regla del proyecto es no añadir dependencias de runtime durante el piloto: un
 driver de PostgreSQL sería la primera. Se deja escrito como pendiente en vez
 de entregar una versión que solo funciona con SQLite y diga que cumple.
+
+### La solución al 7: que el código no pueda sobreprometer
+
+El bloqueo era doble, y los dos tienen arreglo:
+
+**El driver va como extra, no como dependencia.** El propio plan lo dice:
+*"Remote service dependencies are declared as extras; the local client keeps
+the dependency-free core"*. `[project.optional-dependencies] remote` en
+`pyproject.toml` cumple eso. Instalar `cshcli` a secas no arrastra un driver
+que el coordinador local no usa, así que tu regla se respeta en vez de
+saltarse.
+
+**El propio store se niega a servir tráfico sin pruebas.** Aquí está la idea
+que de verdad cierra el hito en pie:
+`RemoteStore.verification()` devuelve `unverified` con un motivo, y
+`assert_production_ready()` lanza `remote_unverified`. Un test comprueba que
+`verification()` **nunca** puede devolver `verified` por su cuenta. Así, la
+condición de aceptación del plan —"la versión distribuida no prometa garantías
+que no pasan los tests"— está en el código y no solo en un documento que
+nadie lee.
+
+**El test de concurrencia existe y se omite diciendo por qué.** Once procesos
+independientes compitiendo por `file:src` y `file:src/a.py` contra un
+PostgreSQL real, exigiendo un único ganador. El plan prohíbe sustituirlo por un
+mock, porque un mock no prueba nada sobre `SELECT ... FOR UPDATE`. Borrarlo
+sería justamente lo que el plan prohíbe; se deja, con su motivo en el mensaje
+de salto. En esta máquina no hay Docker, Podman, WSL ni PostgreSQL: está
+comprobado, no supuesto.
+
+La migración lleva los dos detalles que no son portables y que no conviene
+"simplificar": el fence sale de una **secuencia**, nunca de un contador por
+fila que un restore podría rebobinar, y la adquisición **bloquea la fila del
+proyecto** antes de leer o insertar, porque dos recursos que solapan por
+prefijo pueden vivir en filas distintas.
 
 ## 8B: el DAG, y por qué `claim` no se puede partir en dos
 

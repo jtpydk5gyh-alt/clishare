@@ -1,0 +1,33 @@
+# Compose for the remote coordinator's database.
+#
+# The database listens on the compose network only. It publishes no host port,
+# so a mistake in the service cannot expose it to the internet, and the only
+# way in is from a container on the same network.
+#
+# The password comes from an environment variable, not from this file. Put it
+# in a .env next to this compose file and keep that file out of git:
+#   POSTGRES_PASSWORD_FILE=./.pgpass
+# or export POSTGRES_PASSWORD from your secret manager before `docker compose up`.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cshcli
+      POSTGRES_USER: cshcli
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the environment}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cshcli -d cshcli"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    # No ports: the database is reachable only from this network.
+    expose:
+      - "5432"
+
+volumes:
+  db_data:

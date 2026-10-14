@@ -27,6 +27,7 @@ plan lives in [the main document](superpowers/plans/2026-10-14-cshcli.md).
 | Native direct OAuth | Proposed, conditioned on official mechanism and eligibility |
 | Personal data guard | Pre-commit hook and a **required** CI check; refuses personal emails, private relay addresses, user paths and a non-noreply identity. Reads the staged index and fails closed |
 | Sessions and revocation (7) | `Identity` issues expiring sessions stored as HMAC hashes, and `authorization_generation` refuses work queued before a revocation |
+| Remote store (7) | PostgreSQL schema, row-locked acquisition and a refusal to serve while unverified. **No server has been run**; the concurrency test skips with its reason |
 | Task DAG (8B) | `TaskService` with seven states, cycle refusal on create and modify, and `claim` that acquires leases in the same transaction |
 | Branch governance | Ruleset `main-integrity`: no force-push, no deletion, no direct updates, and `Personal data guard` required to merge |
 

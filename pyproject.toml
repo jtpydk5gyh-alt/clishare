@@ -23,5 +23,12 @@ cshcli = "cshcli.cli:main"
 Repository = "https://github.com/jtpydk5gyh-alt/cshcli"
 Issues = "https://github.com/jtpydk5gyh-alt/cshcli/issues"
 
+# The local pilot and the client stay dependency-free. The remote service needs
+# a PostgreSQL driver, and the plan declares it as an extra rather than a
+# runtime requirement: installing cshcli must never drag in a database driver
+# that the local coordinator does not use.
+[project.optional-dependencies]
+remote = ["psycopg[binary]>=3.1"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
