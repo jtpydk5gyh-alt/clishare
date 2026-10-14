@@ -81,6 +81,17 @@ escritura sobre la misma base, porque eso produce `database is locked`.
   `git stash push -u` y un clon limpio.
 - **Verificar después del commit**, no antes. Los tests en verde sobre un
   árbol que luego se pierde no prueban nada.
+- **Un `reset --hard` sin mirar destruye trabajo, también el propio.**
+  `push_rewritten_main.py` incumplía la regla de arriba y se comió un arreglo
+  sin commitear. Ya rechaza el árbol sucio antes de resetear.
+- **Un control de seguridad no se relaja para que pase el código propio.** El
+  guard ve un arroba seguido de algo con punto, y toma por correo cualquier
+  decorador con nombre cualificado. Al escribir
+  `tests/test_remote_postgres.py` bloqueó el commit; la respuesta fue
+  reescribir el test con `self.skipTest()` en `setUp`, no tocar el patrón. Y
+  al documentarlo aquí, el párrafo se trippinga a sí mismo, que es la mejor
+  prueba de que el control funciona. Merece la pena tenerlo en cuenta antes de
+  escribir más tests con decoradores.
 
 ## Herramientas propias
 
