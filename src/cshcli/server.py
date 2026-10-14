@@ -1,9 +1,14 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import time
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from . import __version__
+from .context import ContextAssembler
 from .errors import DomainError
+from .integration import IntegrationGate
+from .policy import Policy
 from .store import Store
 
 MAX_BODY = 1024 * 1024
@@ -12,10 +17,43 @@ MAX_BODY = 1024 * 1024
 class Coordinator(ThreadingHTTPServer):
     daemon_threads = True
     block_on_close = True
+    allow_reuse_address = True
+    request_queue_size = 64
 
     def __init__(self, address, store):
         self.store = store
+        self.started_at = time.time()
+        self._requests_served = 0
         super().__init__(address, Handler)
+
+    def count_request(self):
+        self._requests_served += 1
+        super().count_request()
+
+    def health(self) -> dict:
+        database, schema = self._probe()
+        return {
+            "status": "ok" if database == "ok" else "degraded",
+            "mode": "local-pilot",
+            "database": database,
+            "schema_version": schema,
+            "version": __version__,
+            "protocol": "v1",
+            "uptime_seconds": round(time.time() - self.started_at, 3),
+            "requests_served": self._requests_served,
+        }
+
+    def _probe(self) -> tuple[str, int]:
+        try:
+            healthy = self.store.ping()
+        except Exception:
+            return "unavailable", 0
+        if not healthy:
+            return "unavailable", 0
+        try:
+            return "ok", self.store.schema_version()
+        except Exception:
+            return "ok", 0
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -93,7 +131,7 @@ class Handler(BaseHTTPRequestHandler):
             path = [unquote(piece) for piece in parsed_url.path.strip("/").split("/")]
             query = parse_qs(parsed_url.query, keep_blank_values=True, max_num_fields=10)
             if method == "GET" and path == ["health"]:
-                self._json(200, {"data": {"status": "ok", "mode": "local-pilot"}})
+                self._json(200, {"data": self.server.health()})
                 return
             store = self.server.store
             if method == "POST" and path == ["v1", "users"]:
@@ -148,6 +186,32 @@ class Handler(BaseHTTPRequestHandler):
                         return 201, store.acquire_leases(user, project, required(body, "agent_id"), required(body, "resources"), body.get("ttl", 120))
                 if resource == "events" and method == "GET":
                     return 200, store.list_events(user, project)
+                if resource == "context" and method == "POST":
+                    return 200, ContextAssembler(store).build(
+                        user, project, str(required(body, "task_id")),
+                        _text(body, "base_sha"), _budget(body),
+                        body.get("after_revision"))
+                if resource == "runs":
+                    if method == "POST":
+                        return 201, Policy(store).reserve_run(
+                            user, project, str(required(body, "run_id")),
+                            _integer(body, "authorization_generation"),
+                            body.get("limits") or {})
+                    if method == "GET":
+                        return 200, Policy(store).active_runs(user, project)
+                if resource == "patches" and method == "GET":
+                    return 200, IntegrationGate(store).list_accepted(
+                        user, project, _limit(query))
+            if resource == "runs" and len(path) == 5 and path[4] == "settle" and method == "POST":
+                return 200, Policy(store).finish_run(
+                    user, project, str(required(body, "run_id")),
+                    str(required(body, "attempt_id")), required(body, "measured_usage"))
+            if resource == "patches" and len(path) == 5 and path[4] == "accept" and method == "POST":
+                return 200, IntegrationGate(store).accept_patch(
+                    user, project, str(required(body, "run_id")),
+                    _integer(body, "authorization_generation"),
+                    required(body, "lease_fences"), _text(body, "base_sha"),
+                    _text(body, "commit_sha"), body.get("resources"))
             if resource == "leases" and len(path) in {5, 6}:
                 lease_id = path[4]
                 if len(path) == 6 and path[5] == "renew" and method == "POST":
@@ -161,6 +225,36 @@ def required(body, key):
     if key not in body:
         raise DomainError(400, "missing_field", f"Falta el campo {key}.")
     return body[key]
+
+
+def _text(body, key):
+    value = required(body, key)
+    if not isinstance(value, str):
+        raise DomainError(400, "invalid_field", f"{key} debe ser texto.")
+    return value
+
+
+def _integer(body, key):
+    value = required(body, key)
+    if type(value) is not int:
+        raise DomainError(400, "invalid_field", f"{key} debe ser un entero.")
+    return value
+
+
+def _budget(body):
+    value = body.get("context_budget_bytes", 65536)
+    if type(value) is not int or value < 0:
+        raise DomainError(400, "invalid_field", "context_budget_bytes debe ser un entero no negativo.")
+    return value
+
+
+def _limit(query):
+    if any(key != "limit" or len(value) != 1 for key, value in query.items()):
+        raise DomainError(400, "invalid_query", "Usa limit una sola vez.")
+    try:
+        return int(query.get("limit", ["10"])[0])
+    except ValueError:
+        raise DomainError(400, "invalid_query", "limit debe ser un entero.") from None
 
 
 def make_server(db_path: str | Path, host: str = "127.0.0.1", port: int = 8765) -> Coordinator:

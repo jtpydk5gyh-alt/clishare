@@ -36,8 +36,10 @@ class PolicyTests(unittest.TestCase):
             self.owner["id"], self.project["id"], run_id, generation, limits or {},
         )
 
-    def settle(self, reservation, usage):
-        return self.policy.finish_run(reservation["run_id"], reservation["attempt_id"], usage)
+    def settle(self, reservation, usage, user=None):
+        return self.policy.finish_run(
+            (user or self.owner)["id"], self.project["id"],
+            reservation["run_id"], reservation["attempt_id"], usage)
 
     def event_kinds(self):
         return [
@@ -167,12 +169,15 @@ class PolicyTests(unittest.TestCase):
 
     def test_finish_run_rejects_missing_or_double_settlement(self):
         self.assert_domain(
-            404, lambda: self.policy.finish_run("missing-run", "attempt-1", {"cost": 1.0}), "reservation_not_found",
+            404, lambda: self.policy.finish_run(self.owner["id"], self.project["id"],
+                                         "missing-run", "attempt-1", {"cost": 1.0}), "reservation_not_found",
         )
-        self.assert_domain(404, lambda: self.policy.finish_run("run-1", "attempt-1", {}), "reservation_not_found")
+        self.assert_domain(404, lambda: self.policy.finish_run(self.owner["id"], self.project["id"],
+                                         "run-1", "attempt-1", {}), "reservation_not_found")
         reservation = self.reserve()
         self.assert_domain(
-            404, lambda: self.policy.finish_run(reservation["run_id"], "other-attempt", {}), "reservation_not_found",
+            404, lambda: self.policy.finish_run(self.owner["id"], self.project["id"],
+                                         reservation["run_id"], "other-attempt", {}), "reservation_not_found",
         )
         self.assertEqual(self.event_kinds(), ["policy.reserved"])
         first = self.settle(reservation, {"cost": 1.0})
@@ -181,7 +186,8 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(replay["attempt_id"], first["attempt_id"])
         self.assertEqual(replay["state"], "settled")
         self.assertEqual(len(self.reservation_rows("run-1")), 1)
-        self.assert_domain(400, lambda: self.policy.finish_run(reservation["run_id"], reservation["attempt_id"], []), "invalid_input")
+        self.assert_domain(400, lambda: self.policy.finish_run(self.owner["id"], self.project["id"],
+                                         reservation["run_id"], reservation["attempt_id"], []), "invalid_input")
         self.assertEqual(self.event_kinds().count("policy.settled"), 1)
         self.assertEqual(json.loads(self.settlement_row(
             reservation["run_id"], reservation["attempt_id"])["measured_usage_json"]), {"cost": 1.0})
@@ -230,7 +236,8 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(reclaimed["active"], [])
         kinds = [event["kind"] for event in self.store.list_events(self.owner["id"], self.project["id"])]
         self.assertEqual(kinds.count("policy.abandoned"), 2)
-        self.assert_domain(404, lambda: self.policy.finish_run("run-blocked", "any", {}),
+        self.assert_domain(404, lambda: self.policy.finish_run(self.owner["id"], self.project["id"],
+                                         "run-blocked", "any", {}),
                            "reservation_not_found")
         self.reserve({"max_agents": 2, "max_runtime_seconds": 60}, run_id="run-after-reclaim")
         self.assertEqual(self.policy.active_runs(self.owner["id"], self.project["id"])["count"], 1)
@@ -240,7 +247,8 @@ class PolicyTests(unittest.TestCase):
         self.now += 31
         self.policy.active_runs(self.owner["id"], self.project["id"])
         self.assertEqual(self.reservation_rows(reservation["run_id"])[0]["state"], "abandoned")
-        settlement = self.policy.finish_run(reservation["run_id"], reservation["attempt_id"], {
+        settlement = self.policy.finish_run(self.owner["id"], self.project["id"],
+                reservation["run_id"], reservation["attempt_id"], {
             "inference_calls": 3, "cost": None,
         })
         self.assertEqual(settlement["measured_usage"]["inference_calls"], 3)
@@ -259,13 +267,16 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(len(self.reservation_rows("run-a")), 2)
         self.assertEqual(self.policy.active_runs(
             self.owner["id"], self.project["id"])["count"], 1)
-        late = self.policy.finish_run("run-a", first["attempt_id"], {"cost": 1.0})
+        late = self.policy.finish_run(self.owner["id"], self.project["id"],
+                                         "run-a", first["attempt_id"], {"cost": 1.0})
         self.assertEqual(late["attempt_id"], first["attempt_id"])
         self.assertEqual(self.policy.finish_run(
+            self.owner["id"], self.project["id"],
             "run-a", second["attempt_id"], {"cost": 1.0})["attempt_id"], second["attempt_id"])
         self.assert_domain(
             409,
-            lambda: self.policy.finish_run("run-a", second["attempt_id"], {"cost": 2.0}),
+            lambda: self.policy.finish_run(self.owner["id"], self.project["id"],
+                                         "run-a", second["attempt_id"], {"cost": 2.0}),
             "already_settled",
         )
 
@@ -276,6 +287,20 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(replay["attempt_id"], reservation["attempt_id"])
         self.assertEqual(replay["state"], "settled")
         self.assertEqual(len(self.reservation_rows("run-1")), 1)
+
+    def test_a_reservation_can_only_be_settled_by_its_owner(self):
+        invitation = self.store.create_invite(self.owner["id"], self.project["id"], "member")
+        colleague = self.store.register_user("policy-colleague")
+        self.store.accept_invite(colleague["id"], invitation["token"])
+        reservation = self.reserve({"max_agents": 2, "allow_unknown_cost": True})
+        with self.assertRaises(DomainError) as caught:
+            self.policy.finish_run(
+                colleague["id"], self.project["id"],
+                reservation["run_id"], reservation["attempt_id"], {"cost": 1.0})
+        self.assertEqual(caught.exception.code, "reservation_foreign")
+        self.assertEqual(self.reservation_rows(reservation["run_id"])[0]["state"], "reserved")
+        settlement = self.settle(reservation, {"cost": 1.0})
+        self.assertEqual(settlement["measured_usage"]["cost"], 1.0)
 
     def test_memory_cannot_raise_limits_or_unlock_unknown_cost(self):
         self.store.put_memory(
@@ -318,5 +343,6 @@ class PolicyTests(unittest.TestCase):
         self.now += 31
         self.policy.active_runs(self.owner["id"], self.project["id"])
         self.assertEqual(self.reservation_rows(reservation["run_id"])[0]["state"], "abandoned")
-        self.policy.finish_run(reservation["run_id"], reservation["attempt_id"], {"cost": 1.0})
+        self.policy.finish_run(self.owner["id"], self.project["id"],
+                reservation["run_id"], reservation["attempt_id"], {"cost": 1.0})
         self.assertEqual(self.reservation_rows(reservation["run_id"])[0]["state"], "settled")

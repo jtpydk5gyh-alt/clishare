@@ -156,12 +156,14 @@ class Policy:
             }
         return _reservation_view(reservation)
 
-    def finish_run(self, run_id: str, attempt_id: str, measured_usage: dict) -> dict:
+    def finish_run(self, user_id: str, project_id: str, run_id: str,
+                     attempt_id: str, measured_usage: dict) -> dict:
         run_id = _identifier(run_id, "run_id")
         attempt_id = _identifier(attempt_id, "attempt_id")
         if not isinstance(measured_usage, dict):
             raise DomainError(400, "invalid_input", "measured_usage must be an object.")
         with self.store._connection(write=True) as connection:
+            self.store._authorize(connection, user_id, project_id, write=True)
             row = connection.execute(
                 "SELECT run_id, attempt_id, user_id, project_id, authorization_generation, limits_json, state"
                 " FROM run_reservations WHERE run_id = ? AND attempt_id = ?", (run_id, attempt_id),
@@ -169,6 +171,11 @@ class Policy:
             if row is None:
                 raise DomainError(404, "reservation_not_found", "The reservation does not exist.")
             reservation = dict(row)
+            if reservation["user_id"] != user_id:
+                raise DomainError(
+                    403, "reservation_foreign",
+                    "This reservation belongs to another member; you cannot settle it.",
+                )
             settled = connection.execute(
                 "SELECT 1 FROM run_settlements WHERE run_id = ? AND attempt_id = ?", (run_id, attempt_id)
             ).fetchone()

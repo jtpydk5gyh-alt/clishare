@@ -188,6 +188,61 @@ class MilestoneRouteTests(unittest.TestCase):
         serialized = json.dumps(events)
         self.assertNotIn("Bearer", serialized)
 
+class HealthTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.path = Path(self.temp.name) / "coordinator.sqlite3"
+        self.server = make_server(self.path, port=0)
+        self.host, self.port = self.server.server_address[0], self.server.server_address[1]
+        self.url = f"http://127.0.0.1:{self.port}"
+        thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join, 5)
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+
+    def test_health_reports_the_real_state_without_a_bearer(self):
+        client = Client(self.url)
+        report = client.request("GET", "/health")
+        self.assertEqual(report["status"], "ok")
+        self.assertEqual(report["mode"], "local-pilot")
+        self.assertEqual(report["database"], "ok")
+        self.assertEqual(report["protocol"], "v1")
+        self.assertGreaterEqual(report["schema_version"], 1)
+        self.assertIn("version", report)
+        self.assertGreaterEqual(report["uptime_seconds"], 0.0)
+        self.assertIn("requests_served", report)
+
+    def test_health_reports_degraded_when_the_database_is_unreadable(self):
+        self.server.store.db_path = str(Path(self.temp.name) / "missing" / "absent.sqlite3")
+        report = Client(self.url).request("GET", "/health")
+        self.assertEqual(report["status"], "degraded")
+        self.assertEqual(report["database"], "unavailable")
+
+    def test_health_never_exposes_secrets(self):
+        report = json.dumps(Client(self.url).request("GET", "/health"))
+        self.assertNotIn("token", report.lower())
+        self.assertNotIn("key", report.lower())
+        self.assertNotIn(str(self.path), report)
+
+    def test_the_schema_version_is_recorded_and_stable(self):
+        from cshcli.store import SCHEMA_VERSION, Store
+        store = Store(self.path)
+        self.assertEqual(store.schema_version(), SCHEMA_VERSION)
+        reopened = Store(self.path)
+        self.assertEqual(reopened.schema_version(), SCHEMA_VERSION)
+        self.assertTrue(reopened.ping())
+
+    def test_a_broken_database_is_reported_rather_than_silently_ok(self):
+        from cshcli.store import Store
+        store = Store(self.path)
+        self.assertTrue(store.ping())
+        store.db_path = str(Path(self.temp.name) / "absent.sqlite3")
+        with open(store.db_path, "wb") as handle:
+            handle.write(b"not a database at all")
+        self.assertFalse(store.ping())
+
 
 if __name__ == "__main__":
     unittest.main()
