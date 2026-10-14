@@ -12,6 +12,36 @@ from cshcli.errors import DomainError
 from cshcli.store import Store
 
 
+_LEGACY_SCHEMA = """
+CREATE TABLE users (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL UNIQUE,
+    token_hash TEXT NOT NULL UNIQUE
+);
+CREATE TABLE projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    owner_id TEXT NOT NULL REFERENCES users(id)
+);
+CREATE TABLE memberships (
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    user_id TEXT NOT NULL REFERENCES users(id),
+    role TEXT NOT NULL CHECK (role IN ('owner', 'member', 'viewer')),
+    PRIMARY KEY (project_id, user_id)
+);
+CREATE TABLE memory (
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    key TEXT NOT NULL,
+    content TEXT NOT NULL,
+    version INTEGER NOT NULL CHECK (version > 0),
+    author_id TEXT NOT NULL REFERENCES users(id),
+    updated_at REAL NOT NULL,
+    PRIMARY KEY (project_id, key)
+);
+"""
+
+
 class StoreTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -334,6 +364,149 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(len(final["items"]), 1)
         self.assertEqual(final["items"][0]["content"], content)
         self.assertIsNone(final["next_cursor"])
+
+    def test_memory_accepts_kind_scope_status_and_evidence(self):
+        uid, pid = self.member["id"], self.project["id"]
+        metadata = {
+            "kind": "decision", "scope": "task", "status": "verified",
+            "source_commit": "0f1e2d3c", "evidence": ["docs/spec.md#7"],
+        }
+        written = self.store.put_memory(uid, pid, "decisions/provider-auth", "sqlite", 0, metadata)
+        self.assertEqual(
+            (written["kind"], written["scope"], written["status"], written["source_commit"]),
+            ("decision", "task", "verified", "0f1e2d3c"),
+        )
+        self.assertEqual(written["evidence"], ["docs/spec.md#7"])
+        listed = Store(self.path).list_memory(uid, pid)
+        self.assertEqual(listed, [written])
+        page = self.store.list_memory_page(uid, pid)
+        self.assertEqual(page["items"], [written])
+        for kind in ("contract", "evidence", "handoff"):
+            updated = self.store.put_memory(
+                uid, pid, f"entries/{kind}", "body", 0, {"kind": kind, "scope": "resource"},
+            )
+            self.assertEqual((updated["kind"], updated["scope"], updated["status"]), (kind, "resource", "proposed"))
+
+    def test_memory_rejects_invalid_kind_or_scope_or_status(self):
+        uid, pid = self.owner["id"], self.project["id"]
+        for field, values in (
+            ("kind", ("note", "", 17, True, ["decision"])),
+            ("scope", ("team", "", 17, True, ["project"])),
+            ("status", ("draft", "", 17, True, None, ["proposed"])),
+            ("source_commit", (17, True, "x" * 201)),
+            ("evidence", ("note", [1], [["note"]], {"note": True}, 7)),
+            ("expires_at", ("1", True, [1], {"at": 1})),
+        ):
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    self.assert_domain(
+                        400,
+                        lambda field=field, value=value: self.store.put_memory(
+                            uid, pid, "rejected", "body", 0, {field: value},
+                        ),
+                        "invalid_memory_metadata",
+                    )
+        self.assert_domain(400, lambda: self.store.put_memory(uid, pid, "rejected", "body", 0, []), "invalid_memory_metadata")
+        self.assertEqual(self.store.list_memory(uid, pid), [])
+        allowed = self.store.put_memory(uid, pid, "allowed", "body", 0, {"kind": None, "scope": None, "evidence": []})
+        self.assertEqual((allowed["kind"], allowed["scope"], allowed["evidence"]), (None, None, []))
+
+    def test_memory_evidence_round_trips_as_json(self):
+        uid, pid = self.owner["id"], self.project["id"]
+        evidence = ['tests/test_store.py:42 "quoted"', "línea con acentos ✓", "", "path/to/file.py"]
+        written = self.store.put_memory(uid, pid, "evidence/audit", "body", 0, {"kind": "evidence", "evidence": evidence})
+        self.assertEqual(written["evidence"], evidence)
+        with closing(sqlite3.connect(self.path)) as connection:
+            raw = connection.execute("SELECT evidence FROM memory WHERE project_id = ? AND key = ?", (pid, "evidence/audit")).fetchone()[0]
+        self.assertIsInstance(raw, str)
+        self.assertEqual(json.loads(raw), evidence)
+        self.assertEqual(Store(self.path).list_memory(uid, pid)[0]["evidence"], evidence)
+
+    def test_memory_corrupt_evidence_reads_as_none(self):
+        uid, pid = self.owner["id"], self.project["id"]
+        self.store.put_memory(uid, pid, "evidence/broken", "body", 0, {"evidence": ["ok"]})
+        self.store.put_memory(uid, pid, "evidence/wrong-shape", "body", 0, {"evidence": ["ok"]})
+        with closing(sqlite3.connect(self.path)) as connection:
+            connection.execute("UPDATE memory SET evidence = ? WHERE project_id = ? AND key = ?", ("{not json", pid, "evidence/broken"))
+            connection.execute("UPDATE memory SET evidence = ? WHERE project_id = ? AND key = ?", ('{"note": true}', pid, "evidence/wrong-shape"))
+            connection.commit()
+        entries = Store(self.path).list_memory(uid, pid)
+        self.assertEqual([item["key"] for item in entries], ["evidence/broken", "evidence/wrong-shape"])
+        self.assertTrue(all(item["evidence"] is None for item in entries))
+        self.assertEqual(Store(self.path).list_memory_page(uid, pid)["items"], entries)
+
+    def test_memory_status_defaults_to_proposed(self):
+        uid, pid = self.owner["id"], self.project["id"]
+        default = self.store.put_memory(uid, pid, "handoff/task-42", "body", 0)
+        self.assertEqual(default["status"], "proposed")
+        self.assertEqual(default["kind"], None)
+        self.assertEqual(default["scope"], None)
+        self.assertEqual(default["evidence"], None)
+        self.assertEqual(default["expires_at"], None)
+        self.assertEqual(default["source_commit"], None)
+        self.assertEqual(Store(self.path).list_memory(uid, pid), [default])
+        self.assertEqual(self.store.put_memory(uid, pid, "handoff/task-42", "body", 1, {})["status"], "proposed")
+        superseded = self.store.put_memory(uid, pid, "handoff/task-42", "body", 2, {"status": "superseded"})
+        self.assertEqual(superseded["status"], "superseded")
+        self.assertEqual(Store(self.path).list_memory(uid, pid)[0]["status"], "superseded")
+
+    def test_memory_legacy_entries_without_metadata_still_read(self):
+        path = Path(self.temp.name) / "pilot.sqlite3"
+        with closing(sqlite3.connect(path)) as connection:
+            connection.executescript(_LEGACY_SCHEMA)
+            token_hash = hashlib.sha256(b"pilot-token").hexdigest()
+            connection.execute(
+                "INSERT INTO users(id, name, name_key, token_hash) VALUES (?, ?, ?, ?)",
+                ("pilot-owner", "pilot owner", "pilot owner", token_hash),
+            )
+            connection.execute(
+                "INSERT INTO projects(id, name, owner_id) VALUES (?, ?, ?)", ("pilot-project", "pilot", "pilot-owner")
+            )
+            connection.execute(
+                "INSERT INTO memberships(project_id, user_id, role) VALUES (?, ?, 'owner')", ("pilot-project", "pilot-owner")
+            )
+            connection.execute(
+                "INSERT INTO memory(project_id, key, content, version, author_id, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                ("pilot-project", "architecture", "one worktree per task", 3, "pilot-owner", 4242.0),
+            )
+            connection.commit()
+        store = Store(path, clock=lambda: self.now)
+        with closing(sqlite3.connect(path)) as connection:
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(memory)")}
+        self.assertTrue({"kind", "scope", "status", "source_commit", "evidence", "expires_at"} <= columns)
+        legacy = store.list_memory("pilot-owner", "pilot-project")
+        self.assertEqual(len(legacy), 1)
+        self.assertEqual(
+            (legacy[0]["key"], legacy[0]["content"], legacy[0]["version"], legacy[0]["updated_at"]),
+            ("architecture", "one worktree per task", 3, 4242.0),
+        )
+        self.assertEqual(legacy[0]["status"], "proposed")
+        for field in ("kind", "scope", "source_commit", "evidence", "expires_at"):
+            self.assertIsNone(legacy[0][field])
+        self.assertEqual(store.list_memory_page("pilot-owner", "pilot-project")["items"], legacy)
+        updated = store.put_memory(
+            "pilot-owner", "pilot-project", "architecture", "two worktrees", 3,
+            {"kind": "decision", "scope": "project", "status": "verified", "source_commit": "9c8b7a6"},
+        )
+        self.assertEqual((updated["version"], updated["status"], updated["kind"]), (4, "verified", "decision"))
+        self.assertEqual(Store(path).list_memory("pilot-owner", "pilot-project")[0]["content"], "two worktrees")
+
+    def test_memory_expires_at_is_stored_as_float(self):
+        uid, pid = self.owner["id"], self.project["id"]
+        written = self.store.put_memory(uid, pid, "evidence/transient", "body", 0, {"expires_at": 10_500})
+        self.assertIsInstance(written["expires_at"], float)
+        self.assertEqual(written["expires_at"], 10_500.0)
+        fractional = self.store.put_memory(uid, pid, "evidence/fractional", "body", 0, {"expires_at": 0.5})
+        self.assertEqual(fractional["expires_at"], 0.5)
+        with closing(sqlite3.connect(self.path)) as connection:
+            row = connection.execute(
+                "SELECT expires_at FROM memory WHERE project_id = ? AND key = ?", (pid, "evidence/transient"),
+            ).fetchone()
+        self.assertIsInstance(row[0], float)
+        self.assertEqual(row[0], 10_500.0)
+        self.assertEqual(Store(self.path).list_memory(uid, pid)[0]["expires_at"], 0.5)
+        negative = self.store.put_memory(uid, pid, "evidence/past", "body", 0, {"expires_at": -1})
+        self.assertEqual(negative["expires_at"], -1.0)
 
 
 if __name__ == "__main__":
