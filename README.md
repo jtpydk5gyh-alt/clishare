@@ -17,6 +17,7 @@ and AI accounts while sharing decisions and reserving files.
 | Git verification | The gate can ask the repository whether the commits exist, whether the base is really an ancestor, and which paths the commit actually touches |
 | Isolated worktrees | Each run gets its own detached worktree; traversal, absolute paths, reserved Windows names, symbolic links and junctions are refused |
 | Revocable authorisation | A generation counter per member and per agent; revoking one invalidates the runs already open |
+| Mediated runner | Every write validates its lease against the coordinator at the moment it happens, stops on heartbeat loss, and has no method that runs a command |
 | AI providers | OpenAI, Anthropic, Google, **MiniMax**, plus the official Codex, Claude Code and Gemini CLIs, with a capability probe that never invents pricing |
 | Personal data guard | A pre-commit hook and a **required** CI check that refuse personal addresses, private relay addresses, user paths and a git identity other than the noreply form. The guard reads the staged index, and fails closed if git cannot deliver a file |
 
@@ -28,9 +29,12 @@ Linux and Windows with Python 3.11, 3.12 and 3.13.
 
 What is **not** done, and is stated plainly rather than implied:
 
-- **No sandbox.** The workspace is a path boundary. It stops a write from
-  leaving the worktree; it does not constrain an arbitrary command running
-  inside it, and it does not limit memory or processes.
+- **No sandbox.** The workspace is a path boundary, and the runner mediates
+  every write. It stops a write from leaving the worktree; it does not
+  constrain an arbitrary command running inside it, and it does not limit
+  CPU, memory, processes or network. There is no method that runs a command,
+  which is a deliberate boundary rather than a guarantee: arbitrary execution
+  is planned for a Linux container or VM that does not exist yet.
 - **Leases are cooperative.** The coordinator records who holds what, and
   refuses a second acquisition. It cannot stop your editor from saving over
   the file. Only the runner will enforce that, in a later milestone.

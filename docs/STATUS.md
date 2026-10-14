@@ -19,12 +19,14 @@ plan lives in [the main document](superpowers/plans/2026-10-14-cshcli.md).
 | Run reservations and limits | Ceiling enforced, reconciliation after a crash, unknown usage never zeroed |
 | Publication gate | Serialised `accept_patch` verifying fence, owner, expiry, generation and both SHAs |
 | Isolated workspace | Per-run git worktree; refuses traversal, symlinks and Windows junctions |
-| Sandboxed runner | Proposed; the workspace is a path boundary, not a sandbox |
+| Mediated runner (6C) | `Runner` validates the lease immediately before every write, stops on heartbeat loss, and exposes no command execution |
+| Sandbox | **Not a sandbox.** No CPU, memory, process or network limits. Arbitrary execution stays unimplemented by design |
 | Cross-machine service | Proposed, not yet implemented |
 | Automatic Git integration | Proposed, not yet implemented |
 | Deployment publish and rollback | Proposed; the pilot only reserves environments |
 | Native direct OAuth | Proposed, conditioned on official mechanism and eligibility |
 | Personal data guard | Pre-commit hook and a **required** CI check; refuses personal emails, private relay addresses, user paths and a non-noreply identity. Reads the staged index and fails closed |
+| Sessions and revocation (7) | `Identity` issues expiring sessions stored as HMAC hashes, and `authorization_generation` refuses work queued before a revocation |
 | Branch governance | Ruleset `main-integrity`: no force-push, no deletion, no direct updates, and `Personal data guard` required to merge |
 
 ## Local evidence
@@ -35,7 +37,7 @@ session. Verification used a standard CPython 3.12 installation; the
 interpreter path is machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests -v`
-returned **247 passing tests in 100 seconds**, with 2 skipped: the symbolic link
+returned **284 passing tests in 111 seconds**, with 2 skipped: the symbolic link
 cases on a host that does not grant the privilege, while the Windows junction
 case runs. Concurrent tests use eleven synchronised threads; they do not yet
 represent eleven distributed processes.
@@ -63,10 +65,15 @@ every squash reintroduced it and the history had to be rewritten again. With
 that address set to private visibility, GitHub falls back to the noreply form
 and merges stay clean; verified on two consecutive merges without a rewrite.
 
-The sandbox is not verified. `Workspace` refuses paths that escape the worktree,
-including symbolic links and Windows junctions, but it does not constrain an
-arbitrary command running inside the workspace, and it does not limit memory or
-processes. That is milestone 6C.
+The sandbox is not verified and **is not implemented**. The plan places
+arbitrary execution in a Linux container or VM with verified controls, and
+says a native Windows or macOS runner is not to be advertised as equivalent
+until its controls are verified. What exists today is the mediated runner: it
+validates the lease before every write, refuses any path its workspace will
+not resolve, stops on heartbeat loss, and has no method that runs a command.
+`Workspace` refuses paths that escape the worktree, including symbolic links
+and Windows junctions. What remains is process, memory and network
+containment, which needs a container that does not exist yet.
 
 ## Rules and decisions
 

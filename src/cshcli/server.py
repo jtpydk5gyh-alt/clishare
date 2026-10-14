@@ -224,6 +224,10 @@ class Handler(BaseHTTPRequestHandler):
                     _text(body, "commit_sha"), body.get("resources"), body.get("repo"))
             if resource == "leases" and len(path) in {5, 6}:
                 lease_id = path[4]
+                if len(path) == 6 and path[5] == "validate" and method == "POST":
+                    return 200, store.validate_lease(
+                        user, project, lease_id, required(body, "fence"),
+                        body.get("resource"))
                 if len(path) == 6 and path[5] == "renew" and method == "POST":
                     return 200, store.renew_lease(user, project, lease_id, required(body, "fence"), body.get("ttl", 120))
                 if len(path) == 5 and method == "DELETE":

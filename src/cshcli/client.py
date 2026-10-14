@@ -72,3 +72,20 @@ class Client:
                 return payload["data"]
             except (ValueError, KeyError, TypeError, RecursionError):
                 raise DomainError(502, "invalid_response", "El coordinador devolvió una respuesta JSON inválida.") from None
+
+    def validate_lease(self, project_id: str, lease_id: str, fence: int,
+                       resource: str | None = None) -> dict:
+        body = {"fence": fence}
+        if resource is not None:
+            body["resource"] = resource
+        return self.request(
+            "POST",
+            f"/v1/projects/{project_id}/leases/{lease_id}/validate",
+            body)
+
+    def renew_lease(self, project_id: str, lease_id: str, fence: int,
+                    ttl: int = 120) -> dict:
+        return self.request(
+            "POST",
+            f"/v1/projects/{project_id}/leases/{lease_id}/renew",
+            {"fence": fence, "ttl": ttl})
