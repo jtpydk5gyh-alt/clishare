@@ -5,7 +5,7 @@ Describe el problema y el comportamiento resultante.
 ## Verificación
 
 - [ ] Pruebas ejecutadas antes y después del cambio.
-- [ ] No secrets, credentials, or private files in the diff.
+- [ ] Sin comentarios explicativos en código ni secretos o memoria privada.
 - [ ] Documentación actualizada cuando corresponde.
 
 Indica comandos y resultados. Enlaza la issue si existe.

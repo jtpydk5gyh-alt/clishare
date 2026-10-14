@@ -4,6 +4,8 @@ import time
 from typing import Callable
 
 from .errors import DomainError
+from .integration import _git_sha
+from .store import _text as validate_text
 
 _PROTECTED_PREFIXES = ("rules/", "contracts/")
 _PAGE_LIMIT = 10
@@ -61,7 +63,9 @@ class ContextAssembler:
                     continue
                 content = _text(row, "content")
                 size = len(content.encode("utf-8"))
-                if reserved or used + size <= budget:
+                if reserved and used + size > budget:
+                    raise DomainError(409, "context_budget_exceeded", "Critical rules and contracts exceed the context budget.")
+                if used + size <= budget:
                     entries.append(_entry(row, content, False))
                     used += size
                 else:
@@ -78,6 +82,12 @@ class ContextAssembler:
         context_budget_bytes: int,
         after_revision: int | None = None,
     ) -> dict:
+        task_id = validate_text(task_id, "task_id", 200)
+        base_sha = _git_sha(base_sha, "base_sha")
+        if type(context_budget_bytes) is not int or context_budget_bytes < 0:
+            raise DomainError(400, "invalid_input", "context_budget_bytes must be a nonnegative integer.")
+        if after_revision is not None and (type(after_revision) is not int or after_revision < 0):
+            raise DomainError(400, "invalid_input", "after_revision must be a nonnegative integer.")
         rows = sorted(
             (row for row in self._read(user_id, project_id) if row.get("status") != _SUPERSEDED),
             key=lambda row: row["key"],

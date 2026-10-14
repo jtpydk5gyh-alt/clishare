@@ -79,7 +79,7 @@ class PolicyTests(unittest.TestCase):
         other = self.reserve(run_id="run-2")
         self.assertNotEqual(other["attempt_id"], first["attempt_id"])
         self.assert_domain(409, lambda: self.reserve({"max_agents": 6}, run_id="run-1"), "reservation_mismatch")
-        self.assert_domain(409, lambda: self.reserve(generation=2, run_id="run-1"), "reservation_mismatch")
+        self.assert_domain(409, lambda: self.reserve(generation=2, run_id="run-1"), "generation_stale")
 
     def test_reserve_run_rejects_generation_mismatch(self):
         self.assertEqual(self.store.authorization_generation(self.owner["id"], self.project["id"], "agent"), 1)
@@ -346,3 +346,58 @@ class PolicyTests(unittest.TestCase):
         self.policy.finish_run(self.owner["id"], self.project["id"],
                 reservation["run_id"], reservation["attempt_id"], {"cost": 1.0})
         self.assertEqual(self.reservation_rows(reservation["run_id"])[0]["state"], "settled")
+
+    def test_run_names_are_isolated_by_project_and_replay_requires_owner(self):
+        first = self.reserve()
+        colleague = self.store.register_user("isolated-colleague")
+        other = self.store.create_project(colleague["id"], "isolated")
+        second = self.policy.reserve_run(colleague["id"], other["id"], "run-1", 1, {})
+        self.assertEqual(second["user_id"], colleague["id"])
+        self.assertEqual(second["project_id"], other["id"])
+        self.assertNotEqual(second["attempt_id"], first["attempt_id"])
+        invitation = self.store.create_invite(self.owner["id"], self.project["id"], "member")
+        self.store.accept_invite(colleague["id"], invitation["token"])
+        self.assert_domain(403, lambda: self.policy.reserve_run(
+            colleague["id"], self.project["id"], "run-1", 1, {}), "reservation_foreign")
+        self.settle(first, {"cost": 1})
+        self.assert_domain(403, lambda: self.policy.reserve_run(
+            colleague["id"], self.project["id"], "run-1", 1, {}), "reservation_foreign")
+
+    def test_settlement_cannot_authorize_against_another_project(self):
+        colleague = self.store.register_user("settlement-colleague")
+        other = self.store.create_project(colleague["id"], "other")
+        invitation = self.store.create_invite(self.owner["id"], self.project["id"], "member")
+        self.store.accept_invite(colleague["id"], invitation["token"])
+        reservation = self.policy.reserve_run(colleague["id"], self.project["id"], "member-run", 1, {})
+        downgrade = self.store.create_invite(self.owner["id"], self.project["id"], "viewer")
+        self.store.accept_invite(colleague["id"], downgrade["token"])
+        self.assert_domain(403, lambda: self.settle(reservation, {"cost": 1}, colleague), "forbidden")
+        self.assert_domain(404, lambda: self.policy.finish_run(
+            colleague["id"], other["id"], reservation["run_id"], reservation["attempt_id"], {"cost": 1}),
+            "reservation_not_found")
+        self.assertEqual(self.reservation_rows("member-run")[0]["state"], "reserved")
+
+    def test_future_generation_cannot_reserve(self):
+        self.assert_domain(409, lambda: self.reserve(generation=2), "generation_stale")
+        self.assertEqual(self.reservation_rows("run-1"), [])
+
+    def test_expired_run_retry_reclaims_before_replaying(self):
+        first = self.reserve({"max_runtime_seconds": 1})
+        self.now += 2
+        second = self.reserve({"max_runtime_seconds": 1})
+        self.assertNotEqual(first["attempt_id"], second["attempt_id"])
+        self.assertEqual(self.policy.active_runs(self.owner["id"], self.project["id"])["count"], 1)
+        self.assertEqual(self.event_kinds().count("policy.abandoned"), 1)
+
+    def test_missing_cost_is_recorded_as_unknown_and_requires_permission(self):
+        first = self.reserve()
+        self.assert_domain(409, lambda: self.settle(first, {}), "cost_unknown")
+        allowed = self.reserve({"allow_unknown_cost": True}, "allowed-missing-cost")
+        settled = self.settle(allowed, {"inference_calls": 1})
+        self.assertIn("cost", settled["unknown_usage"])
+        self.assertIsNone(settled["measured_usage"]["cost"])
+
+    def test_settled_replay_preserves_the_original_limits(self):
+        reservation = self.reserve({"max_agents": 2})
+        self.settle(reservation, {"cost": 1})
+        self.assert_domain(409, lambda: self.reserve({"max_agents": 3}), "reservation_mismatch")
