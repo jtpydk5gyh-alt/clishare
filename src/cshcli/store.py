@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS memory (
     version INTEGER NOT NULL CHECK (version > 0),
     author_id TEXT NOT NULL REFERENCES users(id),
     updated_at REAL NOT NULL,
+    kind TEXT,
+    scope TEXT,
+    status TEXT NOT NULL DEFAULT 'proposed',
+    source_commit TEXT,
+    evidence TEXT,
+    expires_at REAL,
     PRIMARY KEY (project_id, key)
 );
 CREATE TABLE IF NOT EXISTS leases (
@@ -66,6 +72,88 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS events_project_id ON events(project_id, id);
 """
+
+
+_MEMORY_COLUMNS = (
+    ("kind", "TEXT"),
+    ("scope", "TEXT"),
+    ("status", "TEXT NOT NULL DEFAULT 'proposed'"),
+    ("source_commit", "TEXT"),
+    ("evidence", "TEXT"),
+    ("expires_at", "REAL"),
+)
+
+_MEMORY_KINDS = ("decision", "contract", "evidence", "handoff")
+_MEMORY_SCOPES = ("project", "task", "resource")
+_MEMORY_STATUSES = ("proposed", "verified", "superseded")
+_MEMORY_SELECT = (
+    "SELECT key, content, version, author_id, updated_at, kind, scope, status, source_commit, evidence, expires_at FROM memory"
+)
+
+
+def _migrate_memory_columns(connection):
+    """Add the revision metadata columns that pilot databases do not have yet."""
+    existing = {row["name"] for row in connection.execute("PRAGMA table_info(memory)")}
+    for column, definition in _MEMORY_COLUMNS:
+        if column not in existing:
+            connection.execute(f"ALTER TABLE memory ADD COLUMN {column} {definition}")
+
+
+def _invalid_memory_metadata(message):
+    return DomainError(400, "invalid_memory_metadata", message)
+
+
+def _memory_metadata(metadata):
+    if metadata is None:
+        metadata = {}
+    if not isinstance(metadata, dict):
+        raise _invalid_memory_metadata("Memory metadata must be an object.")
+    kind = metadata.get("kind")
+    if kind is not None and kind not in _MEMORY_KINDS:
+        raise _invalid_memory_metadata(f"Memory kind must be one of {', '.join(_MEMORY_KINDS)}.")
+    scope = metadata.get("scope")
+    if scope is not None and scope not in _MEMORY_SCOPES:
+        raise _invalid_memory_metadata(f"Memory scope must be one of {', '.join(_MEMORY_SCOPES)}.")
+    status = metadata.get("status", "proposed")
+    if status not in _MEMORY_STATUSES:
+        raise _invalid_memory_metadata(f"Memory status must be one of {', '.join(_MEMORY_STATUSES)}.")
+    source_commit = metadata.get("source_commit")
+    if source_commit is not None and (not _valid_unicode(source_commit) or len(source_commit) > 200):
+        raise _invalid_memory_metadata("Memory source_commit must be text of at most 200 characters.")
+    evidence = metadata.get("evidence")
+    if evidence is not None and (
+        not isinstance(evidence, list) or any(not isinstance(item, str) for item in evidence)
+    ):
+        raise _invalid_memory_metadata("Memory evidence must be a list of strings.")
+    expires_at = metadata.get("expires_at")
+    if expires_at is not None:
+        if isinstance(expires_at, bool) or not isinstance(expires_at, (int, float)):
+            raise _invalid_memory_metadata("Memory expires_at must be a number.")
+        expires_at = float(expires_at)
+    return {
+        "kind": kind,
+        "scope": scope,
+        "status": status,
+        "source_commit": source_commit,
+        "evidence": evidence,
+        "expires_at": expires_at,
+    }
+
+
+def _memory_entry(row):
+    """Normalize a memory row; unreadable evidence degrades to None."""
+    entry = dict(row)
+    raw = entry.get("evidence")
+    try:
+        decoded = json.loads(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        decoded = None
+    entry["evidence"] = decoded if isinstance(decoded, list) else None
+    for column in ("kind", "scope", "source_commit", "expires_at"):
+        entry[column] = entry.get(column)
+    if entry.get("status") is None:
+        entry["status"] = "proposed"
+    return entry
 
 
 def _hash_token(token):
@@ -134,6 +222,13 @@ class Store:
         with self._connection() as connection:
             connection.execute("PRAGMA journal_mode=WAL")
             connection.executescript("BEGIN IMMEDIATE;" + _SCHEMA + "COMMIT;")
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                _migrate_memory_columns(connection)
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
 
     @contextmanager
     def _connection(self, write=False):
@@ -256,8 +351,8 @@ class Store:
     def list_memory(self, user_id, project_id):
         with self._connection() as connection:
             self._authorize(connection, user_id, project_id)
-            return [dict(row) for row in connection.execute(
-                "SELECT key, content, version, author_id, updated_at FROM memory WHERE project_id = ? ORDER BY key", (project_id,)
+            return [_memory_entry(row) for row in connection.execute(
+                _MEMORY_SELECT + " WHERE project_id = ? ORDER BY key", (project_id,)
             )]
 
     def list_memory_page(self, user_id, project_id, limit=10, after=None):
@@ -267,14 +362,15 @@ class Store:
             if after is not None:
                 after = _text(after, "memory cursor", 200)
             rows = connection.execute(
-                "SELECT key, content, version, author_id, updated_at FROM memory WHERE project_id = ? AND key > ? ORDER BY key LIMIT ?",
+                _MEMORY_SELECT + " WHERE project_id = ? AND key > ? ORDER BY key LIMIT ?",
                 (project_id, after if after is not None else "", limit + 1),
             ).fetchall()
-            items = [dict(row) for row in rows[:limit]]
+            items = [_memory_entry(row) for row in rows[:limit]]
             next_cursor = items[-1]["key"] if len(rows) > limit else None
             return {"items": items, "next_cursor": next_cursor}
 
-    def put_memory(self, user_id, project_id, key, content, expected_version):
+    def put_memory(self, user_id, project_id, key, content, expected_version, metadata=None):
+        metadata = _memory_metadata(metadata)
         with self._connection(write=True) as connection:
             self._authorize(connection, user_id, project_id, write=True)
             key = _text(key, "memory key", 200)
@@ -286,12 +382,26 @@ class Store:
             if actual != expected_version:
                 raise DomainError(409, "version_conflict", f"Memory version is {actual}; reload before updating.")
             version, updated_at = actual + 1, self.clock()
+            evidence = metadata["evidence"]
             connection.execute(
-                "INSERT INTO memory(project_id, key, content, version, author_id, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(project_id, key) DO UPDATE SET content = excluded.content, version = excluded.version, author_id = excluded.author_id, updated_at = excluded.updated_at",
-                (project_id, key, content, version, user_id, updated_at),
+                "INSERT INTO memory(project_id, key, content, version, author_id, updated_at, kind, scope, status, source_commit, evidence, expires_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT(project_id, key) DO UPDATE SET content = excluded.content, version = excluded.version,"
+                " author_id = excluded.author_id, updated_at = excluded.updated_at, kind = excluded.kind,"
+                " scope = excluded.scope, status = excluded.status, source_commit = excluded.source_commit,"
+                " evidence = excluded.evidence, expires_at = excluded.expires_at",
+                (project_id, key, content, version, user_id, updated_at, metadata["kind"], metadata["scope"],
+                 metadata["status"], metadata["source_commit"],
+                 json.dumps(evidence, separators=(",", ":"), sort_keys=True) if evidence is not None else None,
+                 metadata["expires_at"]),
             )
             self._event(connection, user_id, project_id, "memory.updated", {"key": key, "version": version})
-        return {"key": key, "content": content, "version": version, "author_id": user_id, "updated_at": updated_at}
+        return {
+            "key": key, "content": content, "version": version, "author_id": user_id, "updated_at": updated_at,
+            "kind": metadata["kind"], "scope": metadata["scope"], "status": metadata["status"],
+            "source_commit": metadata["source_commit"], "evidence": metadata["evidence"],
+            "expires_at": metadata["expires_at"],
+        }
 
     def acquire_leases(self, user_id, project_id, agent_id, resources, ttl=120):
         with self._connection(write=True) as connection:
