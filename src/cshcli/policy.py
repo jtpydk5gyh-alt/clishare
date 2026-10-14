@@ -10,9 +10,13 @@ from .errors import DomainError
 
 _POSITIVE_LIMITS = ("max_agents", "max_inference_calls", "max_capture_bytes", "max_runtime_seconds")
 _DEFAULT_MAX_AGENTS = 11
+_DEFAULT_RUNTIME_SECONDS = 900
 _UNKNOWN = "unknown"
 _RESERVED = "reserved"
 _SETTLED = "settled"
+_ABANDONED = "abandoned"
+_OPEN_STATES = (_RESERVED,)
+_SETTLEABLE_STATES = (_RESERVED, _ABANDONED)
 
 
 def _invalid_limits(message):
@@ -33,7 +37,7 @@ def _encode(payload):
     return json.dumps(payload, separators=(",", ":"), sort_keys=True)
 
 
-def _normalized_limits(limits):
+def _normalized_limits(limits, ceiling=_DEFAULT_MAX_AGENTS):
     if not isinstance(limits, dict):
         raise _invalid_limits("Limits must be an object.")
     normalized = {}
@@ -45,6 +49,10 @@ def _normalized_limits(limits):
             raise _invalid_limits("allow_unknown_cost must be a boolean.")
         normalized[key] = value
     normalized.setdefault("max_agents", _DEFAULT_MAX_AGENTS)
+    if normalized["max_agents"] > ceiling:
+        raise _invalid_limits(
+            f"max_agents may not exceed the project ceiling of {ceiling}."
+        )
     return normalized
 
 
@@ -52,8 +60,12 @@ def _unknown_fields(measured_usage):
     return sorted(key for key, value in measured_usage.items() if value is None or value == _UNKNOWN)
 
 
-def _reservation_view(reservation):
-    return {
+def _expires_at(limits, created_at):
+    return created_at + limits.get("max_runtime_seconds", _DEFAULT_RUNTIME_SECONDS)
+
+
+def _reservation_view(reservation, expires_at=None):
+    view = {
         "run_id": reservation["run_id"],
         "attempt_id": reservation["attempt_id"],
         "user_id": reservation["user_id"],
@@ -63,6 +75,9 @@ def _reservation_view(reservation):
         "state": reservation["state"],
         "created_at": reservation["created_at"],
     }
+    if expires_at is not None:
+        view["expires_at"] = expires_at
+    return view
 
 
 class Policy:
@@ -73,7 +88,8 @@ class Policy:
     def reserve_run(self, user_id: str, project_id: str, run_id: str,
                     authorization_generation: int, limits: dict) -> dict:
         run_id = _identifier(run_id, "run_id")
-        normalized = _normalized_limits(limits)
+        ceiling = self.project_agent_ceiling(project_id)
+        normalized = _normalized_limits(limits, ceiling)
         if type(authorization_generation) is not int:
             raise DomainError(400, "invalid_input", "authorization_generation must be an integer.")
         current = self.store.authorization_generation(user_id, project_id)
@@ -86,20 +102,35 @@ class Policy:
             self.store._authorize(connection, user_id, project_id, write=True)
             existing = connection.execute(
                 "SELECT run_id, attempt_id, user_id, project_id, authorization_generation, limits_json, state, created_at"
-                " FROM run_reservations WHERE run_id = ?", (run_id,),
+                " FROM run_reservations WHERE run_id = ? ORDER BY created_at DESC, attempt_id DESC LIMIT 1",
+                (run_id,),
             ).fetchone()
             if existing:
                 reservation = dict(existing)
-                if (
-                    reservation["authorization_generation"] != authorization_generation
-                    or json.loads(reservation["limits_json"]) != normalized
-                ):
-                    raise DomainError(
-                        409, "reservation_mismatch",
-                        "The run is already reserved with a different generation or limits.",
-                    )
-                return _reservation_view(reservation)
-            attempt_id, created_at = str(uuid.uuid4()), self.clock()
+                if reservation["state"] == _SETTLED:
+                    return _reservation_view(reservation)
+                if reservation["state"] == _RESERVED:
+                    if (
+                        reservation["authorization_generation"] != authorization_generation
+                        or json.loads(reservation["limits_json"]) != normalized
+                    ):
+                        raise DomainError(
+                            409, "reservation_mismatch",
+                            "The run is already reserved with a different generation or limits.",
+                        )
+                    return _reservation_view(reservation)
+            now = self.clock()
+            self._reclaim_expired(connection, project_id, now)
+            active = connection.execute(
+                "SELECT COUNT(*) FROM run_reservations WHERE project_id = ? AND state = ?",
+                (project_id, _RESERVED),
+            ).fetchone()[0]
+            if active >= normalized["max_agents"]:
+                raise DomainError(
+                    409, "agent_limit_reached",
+                    f"The project already has {active} active runs; the limit is {normalized['max_agents']}.",
+                )
+            attempt_id, created_at = str(uuid.uuid4()), now
             connection.execute(
                 "INSERT INTO run_reservations(run_id, attempt_id, user_id, project_id, authorization_generation,"
                 " limits_json, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -111,6 +142,7 @@ class Policy:
                 "attempt_id": attempt_id,
                 "authorization_generation": authorization_generation,
                 "limits": normalized,
+                "expires_at": _expires_at(normalized, created_at),
             })
             reservation = {
                 "run_id": run_id,
@@ -142,6 +174,11 @@ class Policy:
             ).fetchone()
             if reservation["state"] == _SETTLED or settled:
                 raise DomainError(409, "already_settled", "The attempt is already settled.")
+            if reservation["state"] not in _SETTLEABLE_STATES:
+                raise DomainError(
+                    409, "reservation_not_reserved",
+                    f"The attempt is {reservation['state']}; only a reserved attempt can be settled.",
+                )
             unknown_usage = _unknown_fields(measured_usage)
             if "cost" in unknown_usage and json.loads(reservation["limits_json"]).get("allow_unknown_cost") is not True:
                 raise DomainError(
@@ -172,4 +209,55 @@ class Policy:
             "measured_usage": dict(measured_usage),
             "unknown_usage": unknown_usage,
             "settled_at": settled_at,
+        }
+
+    def _reclaim_expired(self, connection, project_id, now):
+        rows = connection.execute(
+            "SELECT run_id, attempt_id, user_id, project_id, authorization_generation, limits_json, created_at"
+            " FROM run_reservations WHERE project_id = ? AND state = ?",
+            (project_id, _RESERVED),
+        ).fetchall()
+        for row in rows:
+            reservation = dict(row)
+            if now < _expires_at(json.loads(reservation["limits_json"]), reservation["created_at"]):
+                continue
+            connection.execute(
+                "UPDATE run_reservations SET state = ? WHERE run_id = ? AND attempt_id = ? AND state = ?",
+                (_ABANDONED, reservation["run_id"], reservation["attempt_id"], _RESERVED),
+            )
+            self.store._event(connection, reservation["user_id"], project_id, "policy.abandoned", {
+                "run_id": reservation["run_id"],
+                "attempt_id": reservation["attempt_id"],
+                "authorization_generation": reservation["authorization_generation"],
+                "reason": "runtime_limit_reached",
+                "released_at": now,
+            })
+
+    def active_runs(self, user_id: str, project_id: str) -> dict:
+        with self.store._connection(write=True) as connection:
+            self.store._authorize(connection, user_id, project_id, write=False)
+            now = self.clock()
+            self._reclaim_expired(connection, project_id, now)
+            rows = connection.execute(
+                "SELECT run_id, attempt_id, user_id, project_id, authorization_generation, limits_json,"
+                " state, created_at FROM run_reservations WHERE project_id = ? AND state = ?"
+                " ORDER BY created_at, run_id",
+                (project_id, _RESERVED),
+            ).fetchall()
+            views = [
+                _reservation_view(dict(row), _expires_at(json.loads(row["limits_json"]), row["created_at"]))
+                for row in rows
+            ]
+        return {"active": views, "count": len(views), "checked_at": now}
+
+    def project_agent_ceiling(self, project_id: str) -> int:
+        return _DEFAULT_MAX_AGENTS
+
+    def policy_rules(self) -> dict:
+        return {
+            "default_max_agents": _DEFAULT_MAX_AGENTS,
+            "default_max_runtime_seconds": _DEFAULT_RUNTIME_SECONDS,
+            "unknown_usage_is_never_zero": True,
+            "unknown_cost_requires_allow_unknown_cost": True,
+            "memory_cannot_change_limits": True,
         }
