@@ -22,8 +22,7 @@ this repository.
    `docs/superpowers/` are in English. Internal owner rules live in
    `AGENTS.md` on the local machine only.
 2. **Author and committer identity.** Every commit in the new history is
-   authored and committed by the verified owner identity
-   `Trankideal`. The owner does
+   authored and committed by the verified owner identity. The owner does
    not delegate authorship to AI assistants.
 3. **MIT license and required community files.** `LICENSE`,
    `CONTRIBUTING.md`, `SECURITY.md`, and a pull request template are
