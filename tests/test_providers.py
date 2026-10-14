@@ -262,6 +262,83 @@ class ProviderTests(unittest.TestCase):
         for call in run.call_args_list:
             self.assertEqual(call.kwargs["env"], {"TERM": "xterm"})
 
+    def test_capabilities_for_known_api_provider_with_key_and_model(self):
+        environment = {"OPENAI_API_KEY": "sk-test", "ANTHROPIC_API_KEY": "sk-claude", "GEMINI_API_KEY": "google-key"}
+        with patch.dict(os.environ, environment, clear=True):
+            result = providers.capabilities("openai", "api", model="gpt-test")
+        self.assertTrue(result["configured"])
+        self.assertTrue(result["verified"])
+        self.assertTrue(result["text"])
+        self.assertFalse(result["tools_mediable"])
+        self.assertIsNone(result["sandbox"])
+        self.assertTrue(result["streaming"])
+        self.assertEqual(result["usage_available"], "unknown")
+        self.assertEqual(result["price_available"], "unknown")
+        self.assertEqual(result["requires_flags"], [])
+        self.assertEqual(result["endpoint_hint"], "https://api.openai.com/v1/responses")
+
+    def test_capabilities_for_known_api_provider_without_key(self):
+        with patch.dict(os.environ, {}, clear=True):
+            result = providers.capabilities("openai", "api", model="gpt-test")
+        self.assertFalse(result["configured"])
+        self.assertFalse(result["verified"])
+        self.assertEqual(result["usage_available"], "unknown")
+        self.assertEqual(result["price_available"], "unknown")
+
+    def test_capabilities_for_known_api_provider_with_key_but_no_model(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True):
+            result = providers.capabilities("openai", "api", model=None)
+        self.assertTrue(result["configured"])
+        self.assertFalse(result["verified"])
+
+    def test_capabilities_for_unknown_provider_returns_unknown(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True):
+            result = providers.capabilities("nope", "api", model="x")
+        self.assertFalse(result["configured"])
+        self.assertFalse(result["verified"])
+        for field in ("text", "tools_mediable", "sandbox", "streaming", "context_limit",
+                      "output_limit", "usage_available", "price_available",
+                      "requires_flags", "native_login"):
+            self.assertEqual(result[field], "unknown")
+
+    def test_capabilities_for_unknown_mode_returns_unknown(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True):
+            result = providers.capabilities("openai", "nope", model="x")
+        self.assertFalse(result["configured"])
+        self.assertFalse(result["verified"])
+
+    def test_capabilities_for_cli_provider_when_binary_missing(self):
+        with patch.dict(os.environ, {}, clear=True), \
+                patch("clishare.providers.shutil.which", return_value=None):
+            result = providers.capabilities("codex", "cli")
+        self.assertFalse(result["configured"])
+        self.assertFalse(result["verified"])
+        self.assertTrue(result["native_login"])
+        self.assertEqual(result["requires_flags"], [])
+
+    def test_capabilities_for_cli_provider_when_binary_present_and_help_lists_flags(self):
+        help_text = "--sandbox read-only --json --ephemeral --ignore-user-config --skip-git-repo-check"
+        with patch.dict(os.environ, {}, clear=True), \
+                patch("clishare.providers.shutil.which", return_value="/usr/bin/codex"), \
+                patch("clishare.providers.subprocess.run",
+                      return_value=subprocess.CompletedProcess([], 0, help_text, "")):
+            result = providers.capabilities("codex", "cli")
+        self.assertTrue(result["configured"])
+        self.assertTrue(result["verified"])
+        self.assertEqual(result["sandbox"], "read-only")
+        self.assertIn("--sandbox", result["requires_flags"])
+        self.assertIn("--ephemeral", result["requires_flags"])
+        self.assertNotIn("--no-existing-flag", result["requires_flags"])
+
+    def test_capabilities_does_not_invent_pricing(self):
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True):
+            result = providers.capabilities("openai", "api", model="x")
+        self.assertEqual(result["price_available"], "unknown")
+        self.assertNotIn("$", str(result))
+        self.assertNotIn("USD", str(result))
+        self.assertNotIn("EUR", str(result))
+        self.assertNotIn("0.0", str(result).replace("0.0.0", ""))
+
 
 if __name__ == "__main__":
     unittest.main()

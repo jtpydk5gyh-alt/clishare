@@ -231,3 +231,115 @@ def _cli_chat(provider: str, model: str | None, prompt: str) -> str:
     if not completed or not messages:
         raise DomainError(502, "provider_response_incomplete", "El CLI no completó una respuesta de texto.")
     return "\n".join(messages)
+
+
+_CAPABILITY_FIELDS = (
+    "configured", "verified", "text", "tools_mediable", "sandbox", "streaming",
+    "context_limit", "output_limit", "usage_available", "price_available",
+    "native_login", "requires_flags",
+)
+
+_API_STREAMING = {"openai": True, "anthropic": True, "google": True}
+
+_API_PROVIDER_HINTS = {
+    "openai": "https://api.openai.com/v1/responses",
+    "anthropic": "https://api.anthropic.com/v1/messages",
+    "google": "https://generativelanguage.googleapis.com/v1beta/models",
+}
+
+
+def _api_capabilities(provider: str, model: str | None) -> dict:
+    key = os.environ.get(_API_KEYS[provider])
+    has_model = bool(model and model.strip())
+    verified = bool(key) and has_model
+    return {
+        "configured": bool(key),
+        "verified": verified,
+        "text": True,
+        "tools_mediable": False,
+        "sandbox": None,
+        "streaming": _API_STREAMING[provider],
+        "context_limit": "unknown",
+        "output_limit": "unknown",
+        "usage_available": "unknown",
+        "price_available": "unknown",
+        "native_login": False,
+        "requires_flags": [],
+        "endpoint_hint": _API_PROVIDER_HINTS[provider],
+    }
+
+
+def _cli_capabilities(provider: str, executable: str) -> dict:
+    try:
+        help_args = [executable, "exec", "--help"] if provider == "codex" else [executable, "--help"]
+        help_text = _run_capture(help_args, timeout=10).stdout
+    except DomainError:
+        return {
+            "configured": False,
+            "verified": False,
+            "text": "unknown",
+            "tools_mediable": "unknown",
+            "sandbox": "unknown",
+            "streaming": "unknown",
+            "context_limit": "unknown",
+            "output_limit": "unknown",
+            "usage_available": "unknown",
+            "price_available": "unknown",
+            "native_login": provider in _BINARIES,
+            "requires_flags": [],
+        }
+    if provider == "codex":
+        candidate_flags = ["--sandbox", "--json", "--ephemeral", "--ignore-user-config", "--skip-git-repo-check"]
+        sandbox = "read-only" if "--sandbox" in help_text and "read-only" in help_text else "unknown"
+    elif provider == "claude-code":
+        candidate_flags = ["--tools", "--disallowedTools", "--safe-mode", "--no-session-persistence", "--output-format"]
+        sandbox = "safe-mode" if "--safe-mode" in help_text else "unknown"
+    else:
+        candidate_flags = []
+        sandbox = "unknown"
+    return {
+        "configured": True,
+        "verified": True,
+        "text": provider != "gemini-cli",
+        "tools_mediable": False,
+        "sandbox": sandbox,
+        "streaming": False,
+        "context_limit": "unknown",
+        "output_limit": "unknown",
+        "usage_available": "unknown",
+        "price_available": "unknown",
+        "native_login": True,
+        "requires_flags": [flag for flag in candidate_flags if flag in help_text],
+    }
+
+
+def capabilities(provider: str, mode: str, model: str | None = None, cli_version: str | None = None) -> dict:
+    if mode == "api":
+        if provider not in _API_KEYS:
+            return _unknown_capabilities()
+        return _api_capabilities(provider, model)
+    if mode == "cli":
+        if provider not in _BINARIES:
+            return _unknown_capabilities()
+        executable = shutil.which(_BINARIES[provider])
+        if executable is None:
+            return {
+                "configured": False,
+                "verified": False,
+                "text": "unknown",
+                "tools_mediable": "unknown",
+                "sandbox": "unknown",
+                "streaming": "unknown",
+                "context_limit": "unknown",
+                "output_limit": "unknown",
+                "usage_available": "unknown",
+                "price_available": "unknown",
+                "native_login": True,
+                "requires_flags": [],
+            }
+        return _cli_capabilities(provider, executable)
+    return _unknown_capabilities()
+
+
+def _unknown_capabilities() -> dict:
+    return {field: "unknown" for field in _CAPABILITY_FIELDS} | {"configured": False, "verified": False}
