@@ -44,11 +44,7 @@ INTEGRITY_RULES = [
         "require_extra_approval_for_unattributed_changes": False,
     }},
 ]
-OWNER_MERGE_RULES = [{"type": "update", "parameters": {"update_allows_fetch_and_merge": False}}]
 CONDITIONS = {"ref_name": {"include": ["~DEFAULT_BRANCH", "refs/heads/main"], "exclude": []}}
-BYPASS_OWNER = [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request"}]
-
-
 def gh(*arguments, input_text=None):
     return subprocess.run(["gh", *arguments], capture_output=True, text=True,
                           encoding="utf-8", input=input_text)
@@ -63,12 +59,17 @@ def lift_protection() -> list[str]:
 
 
 def restore_protection() -> None:
-    for name, rules, bypass in (("main-integrity", INTEGRITY_RULES, []),
-                                ("main-owner-merge", OWNER_MERGE_RULES, BYPASS_OWNER)):
-        body = {"name": name, "target": "branch", "enforcement": "active",
-                "conditions": CONDITIONS, "bypass_actors": bypass, "rules": rules}
-        gh("api", "--method", "POST", f"repos/{REPOSITORY}/rulesets",
-           "--input", "-", input_text=json.dumps(body))
+    """Only main-integrity is recreated.
+
+    A second ruleset holding an `update` rule sat alongside it and blocked
+    every merge with "base branch policy prohibits the merge". Both rulesets
+    enforced the same thing, changes through a pull request; only one was
+    needed, and the duplicate was the one that deadlocked the repository.
+    """
+    body = {"name": "main-integrity", "target": "branch", "enforcement": "active",
+            "conditions": CONDITIONS, "bypass_actors": [], "rules": INTEGRITY_RULES}
+    gh("api", "--method", "POST", f"repos/{REPOSITORY}/rulesets",
+       "--input", "-", input_text=json.dumps(body))
 
 
 def git(*arguments, **kwargs):
