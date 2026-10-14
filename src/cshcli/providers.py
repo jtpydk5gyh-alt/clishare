@@ -231,3 +231,71 @@ def _cli_chat(provider: str, model: str | None, prompt: str) -> str:
     if not completed or not messages:
         raise DomainError(502, "provider_response_incomplete", "El CLI no completó una respuesta de texto.")
     return "\n".join(messages)
+
+
+_CAPABILITY_FIELDS = (
+    "configured", "verified", "text", "tools_mediable", "sandbox", "streaming",
+    "context_limit", "output_limit", "usage_available", "price_available",
+    "native_login", "requires_flags",
+)
+_API_ENDPOINTS = {"openai": "https://api.openai.com/v1/responses",
+                  "anthropic": "https://api.anthropic.com/v1/messages",
+                  "google": "https://generativelanguage.googleapis.com/v1beta/models"}
+_CLI_FLAG_CANDIDATES = {"codex": ("--sandbox", "--json", "--ephemeral", "--ignore-user-config", "--skip-git-repo-check"),
+                        "claude-code": ("--tools", "--disallowedTools", "--safe-mode", "--no-session-persistence", "--output-format"),
+                        "gemini-cli": ()}
+_CLI_HELP_TIMEOUT = 10
+
+
+def _unknown_capabilities() -> dict:
+    values: dict = {field: "unknown" for field in _CAPABILITY_FIELDS}
+    values["configured"] = False
+    values["verified"] = False
+    return values
+
+
+def _unverified_cli_capabilities() -> dict:
+    values = _unknown_capabilities()
+    values["native_login"] = True
+    values["requires_flags"] = []
+    return values
+
+
+def _cli_sandbox(provider: str, help_text: str) -> str | None:
+    if provider == "codex" and "--sandbox" in help_text and "read-only" in help_text:
+        return "read-only"
+    if provider == "claude-code" and "--safe-mode" in help_text:
+        return "safe-mode"
+    return "unknown"
+
+
+def _api_capabilities(provider: str, model: str | None) -> dict:
+    configured = bool(os.environ.get(_API_KEYS[provider]))
+    values = _unknown_capabilities()
+    values.update({"configured": configured, "verified": configured and bool(model and model.strip()),
+                   "text": True, "tools_mediable": False, "sandbox": None, "streaming": True,
+                   "native_login": False, "requires_flags": [], "endpoint_hint": _API_ENDPOINTS[provider]})
+    return values
+
+
+def _cli_capabilities(provider: str) -> dict:
+    values = _unverified_cli_capabilities()
+    executable = shutil.which(_BINARIES[provider])
+    if executable is None:
+        return values
+    arguments = [executable, "exec", "--help"] if provider == "codex" else [executable, "--help"]
+    try:
+        help_text = _run_capture(arguments, timeout=_CLI_HELP_TIMEOUT).stdout or ""
+    except DomainError:
+        return values
+    values.update({"configured": True, "verified": True, "sandbox": _cli_sandbox(provider, help_text),
+                   "requires_flags": [flag for flag in _CLI_FLAG_CANDIDATES[provider] if flag in help_text]})
+    return values
+
+
+def capabilities(provider: str, mode: str, model: str | None = None, cli_version: str | None = None) -> dict:
+    if mode == "api" and provider in _API_KEYS:
+        return _api_capabilities(provider, model)
+    if mode == "cli" and provider in _BINARIES:
+        return _cli_capabilities(provider)
+    return _unknown_capabilities()
