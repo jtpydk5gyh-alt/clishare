@@ -40,7 +40,10 @@ What is **not** done, and is stated plainly rather than implied:
   refuses a second acquisition. It cannot stop your editor from saving over
   the file. Only the runner will enforce that, in a later milestone.
 - **No cross-machine service.** The database is a local SQLite file. Two
-  people cannot collaborate through this yet.
+  people cannot collaborate through this yet. The PostgreSQL store, its schema
+  and its operations manual exist, and the store refuses to serve traffic
+  while unverified, but no server has been run and the concurrency drill has
+  not been executed. See [operations](docs/OPERATIONS.md).
 - **No real deployments.** `deploy reserve` reserves an environment name. It
   publishes nothing.
 

@@ -34,6 +34,15 @@ once it leaves alpha.
   noreply form.
 
 ### Added
+- Milestone 7 continued: `RemoteStore` for PostgreSQL, with acquisition
+  serialised by `SELECT ... FOR UPDATE` on the project row and fences from a
+  persistent sequence. It **refuses to serve traffic while unverified**, and
+  `verification()` cannot report `verified` without a real server having run.
+- `migrations/001_remote.sql`, `deploy/compose.yaml` with the database on a
+  private network and no published port, and `docs/OPERATIONS.md` with the
+  migration, rollback, backup and restore procedure.
+- The PostgreSQL driver is an extra (`cshcli[remote]`), so installing the
+  package never drags in a driver the local pilot does not use.
 - Milestone 8B: `TaskService` with the `queued`, `running`, `blocked`,
   `review`, `merged`, `failed` and `cancelled` states. A dependency cycle is
   refused when a task is created and again when it is modified. `claim`
