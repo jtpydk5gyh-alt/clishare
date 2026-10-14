@@ -4,8 +4,11 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
+import threading
+import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -162,6 +165,8 @@ def _api_chat(provider: str, model: str, prompt: str, key: str) -> str:
                             {"Authorization": f"Bearer {key}"})
         choices = _list(response.get("choices"))
         choice = choices[0] if choices and isinstance(choices[0], dict) else {}
+        if choice.get("finish_reason") != "stop":
+            raise DomainError(502, "provider_response_incomplete", "El proveedor no completó una respuesta de texto.")
         message = choice.get("message", {})
         text = message.get("content") if isinstance(message, dict) else None
         text = text if isinstance(text, str) else ""
@@ -185,19 +190,74 @@ def _cli_environment() -> dict[str, str]:
             if name.upper() not in _API_KEYS.values() and not name.upper().startswith("CSHCLI_")}
 
 
+def _stop_process(process) -> None:
+    try:
+        if os.name == "nt":
+            if process.poll() is None:
+                taskkill = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "taskkill.exe")
+                subprocess.run([taskkill, "/PID", str(process.pid), "/T", "/F"], shell=False,
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               timeout=5, check=False, env=_cli_environment())
+        else:
+            os.killpg(process.pid, signal.SIGKILL)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    if process.poll() is None:
+        process.kill()
+    process.wait(timeout=5)
+
+
 def _run_capture(arguments: list[str], *, prompt: str | None = None, timeout: int = _CLI_TIMEOUT,
                  cwd: str | None = None):
+    buffers = [bytearray(), bytearray()]
+    overflow, failed, lock = threading.Event(), threading.Event(), threading.Lock()
+
+    def collect(stream, buffer):
+        try:
+            with stream:
+                while chunk := stream.read1(65536):
+                    with lock:
+                        if sum(map(len, buffers)) + len(chunk) > _MAX_RESPONSE_BYTES:
+                            overflow.set()
+                            return
+                        buffer.extend(chunk)
+        except OSError:
+            failed.set()
+
     try:
-        result = subprocess.run(arguments, input=prompt, shell=False, check=False, capture_output=True,
-                                text=True, encoding="utf-8", errors="replace", timeout=timeout, cwd=cwd,
-                                env=_cli_environment())
+        with tempfile.TemporaryFile() as input_stream:
+            input_stream.write((prompt or "").encode("utf-8"))
+            input_stream.seek(0)
+            process = subprocess.Popen(arguments, stdin=input_stream, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                       shell=False, cwd=cwd, env=_cli_environment(), start_new_session=os.name != "nt")
+            readers = [threading.Thread(target=collect, args=(stream, buffer), daemon=True)
+                       for stream, buffer in zip((process.stdout, process.stderr), buffers)]
+            for reader in readers:
+                reader.start()
+            deadline = time.monotonic() + timeout
+            try:
+                while True:
+                    if overflow.is_set():
+                        raise DomainError(502, "provider_response_invalid", "La salida del CLI supera el tamaño permitido.")
+                    if failed.is_set():
+                        raise DomainError(502, "provider_cli_failed", "No se pudo leer la salida del CLI.")
+                    if process.poll() is not None and not any(reader.is_alive() for reader in readers):
+                        break
+                    if time.monotonic() >= deadline:
+                        raise DomainError(504, "provider_timeout", "El CLI superó el tiempo permitido.")
+                    time.sleep(.01)
+            finally:
+                _stop_process(process)
+                for reader in readers:
+                    reader.join(timeout=.1)
     except subprocess.TimeoutExpired:
         raise DomainError(504, "provider_timeout", "El CLI superó el tiempo permitido.") from None
     except OSError:
         raise DomainError(400, "cli_start_failed", "No se pudo iniciar el CLI oficial.") from None
-    if result.returncode != 0:
+    if process.returncode != 0:
         raise DomainError(502, "provider_cli_failed", "El CLI oficial falló. Comprueba su versión, login y cuota directamente.")
-    return result
+    return subprocess.CompletedProcess(arguments, process.returncode,
+                                       *(bytes(buffer).decode("utf-8", errors="replace") for buffer in buffers))
 
 
 def _cli_chat(provider: str, model: str | None, prompt: str) -> str:

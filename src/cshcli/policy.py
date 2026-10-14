@@ -92,24 +92,26 @@ class Policy:
         normalized = _normalized_limits(limits, ceiling)
         if type(authorization_generation) is not int:
             raise DomainError(400, "invalid_input", "authorization_generation must be an integer.")
-        current = self.store.authorization_generation(user_id, project_id)
-        if authorization_generation < current:
-            raise DomainError(
-                409, "generation_stale",
-                f"Authorization generation is {current}; reserve again after re-authorizing.",
-            )
         with self.store._connection(write=True) as connection:
             self.store._authorize(connection, user_id, project_id, write=True)
+            current = self.store.authorization_generation(user_id, project_id)
+            if authorization_generation != current:
+                raise DomainError(
+                    409, "generation_stale",
+                    f"Authorization generation is {current}; reserve again after re-authorizing.",
+                )
+            now = self.clock()
+            self._reclaim_expired(connection, project_id, now)
             existing = connection.execute(
                 "SELECT run_id, attempt_id, user_id, project_id, authorization_generation, limits_json, state, created_at"
-                " FROM run_reservations WHERE run_id = ? ORDER BY created_at DESC, attempt_id DESC LIMIT 1",
-                (run_id,),
+                " FROM run_reservations WHERE project_id = ? AND run_id = ? ORDER BY created_at DESC, attempt_id DESC LIMIT 1",
+                (project_id, run_id),
             ).fetchone()
             if existing:
                 reservation = dict(existing)
-                if reservation["state"] == _SETTLED:
-                    return _reservation_view(reservation)
-                if reservation["state"] == _RESERVED:
+                if reservation["user_id"] != user_id:
+                    raise DomainError(403, "reservation_foreign", "This reservation belongs to another member.")
+                if reservation["state"] in (_RESERVED, _SETTLED):
                     if (
                         reservation["authorization_generation"] != authorization_generation
                         or json.loads(reservation["limits_json"]) != normalized
@@ -119,8 +121,6 @@ class Policy:
                             "The run is already reserved with a different generation or limits.",
                         )
                     return _reservation_view(reservation)
-            now = self.clock()
-            self._reclaim_expired(connection, project_id, now)
             active = connection.execute(
                 "SELECT COUNT(*) FROM run_reservations WHERE project_id = ? AND state = ?",
                 (project_id, _RESERVED),
@@ -162,11 +162,13 @@ class Policy:
         attempt_id = _identifier(attempt_id, "attempt_id")
         if not isinstance(measured_usage, dict):
             raise DomainError(400, "invalid_input", "measured_usage must be an object.")
+        measured_usage = {"cost": None, **measured_usage}
         with self.store._connection(write=True) as connection:
             self.store._authorize(connection, user_id, project_id, write=True)
             row = connection.execute(
                 "SELECT run_id, attempt_id, user_id, project_id, authorization_generation, limits_json, state"
-                " FROM run_reservations WHERE run_id = ? AND attempt_id = ?", (run_id, attempt_id),
+                " FROM run_reservations WHERE project_id = ? AND run_id = ? AND attempt_id = ?",
+                (project_id, run_id, attempt_id),
             ).fetchone()
             if row is None:
                 raise DomainError(404, "reservation_not_found", "The reservation does not exist.")

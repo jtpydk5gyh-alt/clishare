@@ -47,6 +47,9 @@ class Broker:
                  context_manifest: dict, prompt: str | None = None) -> dict:
         if not isinstance(provider, str) or not provider.strip():
             raise DomainError(400, "invalid_provider", "Indica el proveedor de texto mediado.")
+        if provider == "codex":
+            raise DomainError(400, "provider_isolation_unverified",
+                              "El broker no envía contexto compartido a un CLI que puede leer el equipo. Usa una API o Claude CLI con herramientas desactivadas.")
         capabilities = _capability_record(provider, model)
         question = self._question(context_manifest, prompt)
         call = self._provider_callable if self._provider_callable is not None else providers.chat

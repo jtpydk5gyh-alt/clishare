@@ -19,8 +19,8 @@ class ServerTests(unittest.TestCase):
 
     def tearDown(self):
         self.server.shutdown()
-        self.server.server_close()
         self.thread.join()
+        self.server.server_close()
         self.temp.cleanup()
 
     def request(self, method, path, data=None, token=None, headers=None):

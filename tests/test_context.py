@@ -68,7 +68,7 @@ class ContextAssemblerTests(unittest.TestCase):
             self.owner["id"],
             (project if project is not None else self.project)["id"],
             "task-1",
-            "0f1e2d3",
+            "a" * 40,
             budget,
             after_revision,
         )
@@ -86,7 +86,7 @@ class ContextAssemblerTests(unittest.TestCase):
             ],
         )
         self.assertEqual(manifest["task_id"], "task-1")
-        self.assertEqual(manifest["base_sha"], "0f1e2d3")
+        self.assertEqual(manifest["base_sha"], "a" * 40)
         self.assertEqual(manifest["user_id"], self.owner["id"])
         self.assertEqual(manifest["project_id"], self.project["id"])
         self.assertEqual(manifest["budget_bytes"], 100_000)
@@ -112,12 +112,12 @@ class ContextAssemblerTests(unittest.TestCase):
     def test_acl_blocks_non_member(self):
         assembler = ContextAssembler(self.store, clock=lambda: self.now)
         with self.assertRaises(DomainError) as caught:
-            assembler.build(self.outsider["id"], self.project["id"], "task-1", "0f1e2d3", 100_000)
+            assembler.build(self.outsider["id"], self.project["id"], "task-1", "a" * 40, 100_000)
         self.assertEqual(caught.exception.status, 403)
         self.assertEqual(caught.exception.code, "not_a_member")
         self.assertEqual(caught.exception.message, "El usuario no pertenece al proyecto.")
         viewer_view = ContextAssembler(self.store, clock=lambda: self.now).build(
-            self.viewer["id"], self.project["id"], "task-1", "0f1e2d3", 100_000
+            self.viewer["id"], self.project["id"], "task-1", "a" * 40, 100_000
         )
         self.assertEqual(viewer_view["user_id"], self.viewer["id"])
         self.assertEqual(self.keys(viewer_view["entries"]), sorted(self.contents))
@@ -173,7 +173,7 @@ class ContextAssemblerTests(unittest.TestCase):
         self.assertEqual(manifest["used_bytes"], 0)
 
     def test_zero_budget_returns_empty_manifest(self):
-        for budget in (0, -1):
+        for budget in (0,):
             with self.subTest(budget=budget):
                 manifest = self.manifest(budget=budget)
                 self.assertEqual(manifest["entries"], [])
@@ -181,7 +181,7 @@ class ContextAssemblerTests(unittest.TestCase):
                 self.assertEqual(manifest["used_bytes"], 0)
                 self.assertEqual(manifest["budget_bytes"], budget)
                 self.assertEqual(manifest["task_id"], "task-1")
-                self.assertEqual(manifest["base_sha"], "0f1e2d3")
+                self.assertEqual(manifest["base_sha"], "a" * 40)
                 self.assertEqual(manifest["user_id"], self.owner["id"])
                 self.assertEqual(manifest["project_id"], self.project["id"])
                 self.assertEqual(manifest["generated_at"], self.now)
@@ -190,8 +190,8 @@ class ContextAssemblerTests(unittest.TestCase):
     def test_manifest_is_stable_across_calls(self):
         ticks = iter([1_000.0, 2_000.0])
         assembler = ContextAssembler(self.store, clock=lambda: next(ticks))
-        first = assembler.build(self.owner["id"], self.project["id"], "task-1", "0f1e2d3", 400, 7)
-        second = assembler.build(self.owner["id"], self.project["id"], "task-1", "0f1e2d3", 400, 7)
+        first = assembler.build(self.owner["id"], self.project["id"], "task-1", "a" * 40, 400, 7)
+        second = assembler.build(self.owner["id"], self.project["id"], "task-1", "a" * 40, 400, 7)
         self.assertEqual(first["generated_at"], 1_000.0)
         self.assertEqual(second["generated_at"], 2_000.0)
         self.assertEqual(first["after_revision"], 7)
@@ -212,3 +212,25 @@ class ContextAssemblerTests(unittest.TestCase):
         self.assertEqual(entries["handoff/task-1"]["scope"], "user")
         self.assertEqual(entries["notes/standup"]["scope"], "project")
         self.assertEqual(entries["notes/standup"]["status"], "proposed")
+
+    def test_protected_rules_cannot_exceed_a_positive_context_budget(self):
+        project = self.seeded_project("oversized", {"rules/critical": "x" * 1000})
+        with self.assertRaises(DomainError) as caught:
+            self.manifest(project=project, budget=1)
+        self.assertEqual(caught.exception.code, "context_budget_exceeded")
+        self.assertEqual(self.manifest(project=project, budget=1000)["used_bytes"], 1000)
+
+    def test_context_validates_task_sha_budget_and_revision(self):
+        assembler = ContextAssembler(self.store)
+        valid = [self.owner["id"], self.project["id"], "task", "a" * 40, 1000, None]
+        for index, values in ((2, (None, 1, "", "bad\n", "x" * 201)),
+                              (3, (None, "abc", "A" * 40, "g" * 40)),
+                              (4, (-1, True, 1.5, "1000")),
+                              (5, (-1, True, 1.5, "1", {}))):
+            for value in values:
+                with self.subTest(index=index, value=value):
+                    args = valid.copy()
+                    args[index] = value
+                    with self.assertRaises(DomainError) as caught:
+                        assembler.build(*args)
+                    self.assertEqual(caught.exception.status, 400)

@@ -4,7 +4,7 @@ import time
 from typing import Callable
 
 from .errors import DomainError
-from .store import Store, _text, _valid_unicode
+from .store import Store, _resource, _text
 
 
 _SHA_LENGTH = 40
@@ -26,7 +26,7 @@ def _git_sha(value, field):
 
 
 def _patch_resource(value):
-    value = _text(value, "resource", 1024)
+    value = _resource(value)
     if not value.startswith("file:"):
         raise DomainError(400, "invalid_patch", "Only file resources can be accepted as a patch.")
     return value
@@ -58,31 +58,38 @@ class IntegrationGate:
         normalized = {}
         for resource, fence in lease_fences.items():
             normalized[_patch_resource(resource)] = self._fence(fence)
+        if resources is not None and not isinstance(resources, list):
+            raise DomainError(400, "invalid_patch", "Resources must be a list.")
         touched = [_patch_resource(item) for item in resources] if resources else list(normalized)
         missing = sorted(set(touched) - set(normalized))
         if missing:
             raise DomainError(400, "invalid_patch", f"Missing fence for: {', '.join(missing)}.")
 
-        now = self.clock()
         with self.store._connection(write=True) as connection:
             self.store._authorize(connection, user_id, project_id, write=True)
+            now = self.clock()
             generation = self.store.authorization_generation(user_id, project_id)
             if type(authorization_generation) is not int:
                 raise DomainError(400, "invalid_generation", "authorization_generation must be an integer.")
-            if authorization_generation < generation:
+            if authorization_generation != generation:
                 raise DomainError(
                     409, "generation_stale",
                     f"Authorization generation is {generation}; the run must re-authorise before publishing.",
                 )
             previous = connection.execute(
-                "SELECT commit_sha FROM accepted_patches WHERE project_id = ? AND commit_sha = ?",
+                "SELECT * FROM accepted_patches WHERE project_id = ? AND commit_sha = ?",
                 (project_id, commit_sha),
             ).fetchone()
             if previous is not None:
+                if previous["user_id"] != user_id:
+                    raise DomainError(403, "patch_foreign", "This acceptance belongs to another member.")
+                original_resources = self._load(previous["resources_json"], [])
+                if previous["base_sha"] != base_sha or original_resources != sorted(normalized):
+                    raise DomainError(409, "patch_mismatch", "The commit was accepted with a different base or resources.")
                 return {
-                    "project_id": project_id, "run_id": run_id, "base_sha": base_sha,
+                    "project_id": project_id, "run_id": previous["run_id"], "base_sha": previous["base_sha"],
                     "commit_sha": commit_sha, "state": "accepted",
-                    "resources": sorted(normalized), "accepted_at": now,
+                    "resources": original_resources, "accepted_at": previous["accepted_at"],
                     "idempotent_replay": True,
                 }
             open_attempt = connection.execute(

@@ -165,5 +165,65 @@ class WorkspaceTests(unittest.TestCase):
         self.assertNotIn(str(root), listing)
 
 
+    def test_close_refuses_a_workspace_it_did_not_create(self):
+        space = Workspace(self.repo, "borrowed")
+        with self.assertRaises(DomainError) as caught:
+            space.close()
+        self.assertEqual(caught.exception.code, "workspace_unowned")
+        self.assertTrue((self.repo / "README.md").exists())
+
+    def test_close_refuses_a_changed_root(self):
+        space = self.workspace()
+        original = space.root
+        space.root = self.repo
+        try:
+            with self.assertRaises(DomainError) as caught:
+                space.close()
+            self.assertEqual(caught.exception.code, "workspace_changed")
+            self.assertTrue((self.repo / "README.md").exists())
+        finally:
+            space.root = original
+
+    def test_git_metadata_cannot_be_accessed_through_file_operations(self):
+        space = self.workspace()
+        for candidate in (".git", ".GIT", "src/.git/config"):
+            with self.subTest(candidate=candidate):
+                self.assert_rejected(lambda: space.resolve(candidate))
+        self.assertTrue((space.root / ".git").is_file())
+
+    def test_write_does_not_modify_an_external_hardlink_target(self):
+        space = self.workspace()
+        os.link(self.outside, space.root / "linked.txt")
+        space.write("linked.txt", b"workspace value\n")
+        self.assertEqual(self.outside.read_text(encoding="utf-8"), "secreto\n")
+        self.assertEqual(space.read("linked.txt"), b"workspace value\n")
+
+    def test_diff_ref_is_never_interpreted_as_an_option(self):
+        space = self.workspace()
+        space.write("src/api.py", b"value = 2\n")
+        output = self.root / "escaped.patch"
+        with self.assertRaises(DomainError):
+            space.diff("--output=" + str(output))
+        self.assertFalse(output.exists())
+        self.assertIn("+value = 2", space.diff(self.sha))
+
+
+    def test_read_rejects_an_external_hardlink_target(self):
+        space = self.workspace()
+        os.link(self.outside, space.root / "linked.txt")
+        self.assert_rejected(lambda: space.read("linked.txt"))
+
+    def test_rejects_an_internal_directory_junction(self):
+        if os.name != "nt":
+            self.skipTest("junctions are a Windows concept")
+        space = self.workspace()
+        result = subprocess.run([r"C:\Windows\System32\cmd.exe", "/c", "mklink", "/J",
+                                 str(space.root / "internal"), str(space.root / "src")],
+                                capture_output=True, text=True)
+        if result.returncode:
+            self.skipTest("this environment does not allow creating junctions")
+        self.assert_rejected(lambda: space.resolve("internal/api.py"))
+
+
 if __name__ == "__main__":
     unittest.main()

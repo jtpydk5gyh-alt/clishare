@@ -1,4 +1,6 @@
 from contextlib import redirect_stdout, redirect_stderr
+from http.client import IncompleteRead
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
 import json
 from pathlib import Path
@@ -7,6 +9,7 @@ import threading
 import time
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 from cshcli.cli import main
 from cshcli.client import Client
@@ -47,8 +50,8 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(code, 0)
             finally:
                 server.shutdown()
-                server.server_close()
                 thread.join()
+                server.server_close()
 
     def test_missing_collaboration_token_is_safe(self):
         code, _, err = self.invoke(["project", "list"])
@@ -66,6 +69,58 @@ class CliTests(unittest.TestCase):
             with self.subTest(url=url), self.assertRaises(DomainError):
                 Client(url)
 
+    def test_client_handles_invalid_response_bodies_over_http(self):
+        class BrokenResponse(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(500 if self.path.startswith("/error-") else 200)
+                if self.path.endswith("chunked"):
+                    self.send_header("Transfer-Encoding", "chunked")
+                    self.end_headers()
+                    self.wfile.write(b'10\r\n{"data":1}\r\n')
+                else:
+                    body = b'{"data":1}' if self.path == "/length" else b'{"data":' + b"[" * 50000 + b"0" + b"]" * 50000 + b"}"
+                    self.send_header("Content-Length", str(len(body) + (10 if self.path == "/length" else 0)))
+                    self.end_headers()
+                    self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), BrokenResponse)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        client = Client(f"http://127.0.0.1:{server.server_port}")
+        try:
+            for path in ("/chunked", "/length", "/deep", "/error-chunked", "/error-deep"):
+                with self.subTest(path=path):
+                    with self.assertRaises(DomainError) as caught:
+                        client.request("GET", path)
+                    expected = (500, "http_error") if path == "/error-deep" else (502, "invalid_response")
+                    self.assertEqual((caught.exception.status, caught.exception.code), expected)
+        finally:
+            server.shutdown()
+            thread.join(5)
+            server.server_close()
+
+    def test_cli_handles_failed_success_and_error_body_reads(self):
+        for response_status, failure, expected in (
+            (200, TimeoutError(), "coordinator_unavailable"),
+            (200, IncompleteRead(b"partial"), "invalid_response"),
+            (503, TimeoutError(), "coordinator_unavailable"),
+            (503, IncompleteRead(b"partial"), "invalid_response"),
+        ):
+            with self.subTest(status=response_status, failure=type(failure).__name__):
+                if response_status == 200:
+                    response = io.BytesIO()
+                    effect = {"return_value": response}
+                else:
+                    response = HTTPError("http://127.0.0.1/", response_status, "unavailable", {}, io.BytesIO())
+                    effect = {"side_effect": response}
+                with patch.object(response, "read", side_effect=failure), patch("urllib.request.OpenerDirector.open", **effect):
+                    code, _, errors = self.invoke(["project", "list"], {"CSHCLI_TOKEN": "fixture"})
+                self.assertEqual(code, 1)
+                self.assertEqual(json.loads(errors)["error"]["code"], expected)
+
 class MilestoneCommandTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -73,8 +128,9 @@ class MilestoneCommandTests(unittest.TestCase):
         self.server = make_server(Path(self.temp.name) / "db.sqlite", port=0)
         thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         thread.start()
-        self.addCleanup(self.server.shutdown)
         self.addCleanup(self.server.server_close)
+        self.addCleanup(thread.join, 5)
+        self.addCleanup(self.server.shutdown)
         self.env = {"CSHCLI_URL": f"http://127.0.0.1:{self.server.server_port}"}
         code, out, errors = self.invoke(["auth", "register", "ana"], self.env)
         self.assertEqual(code, 0, errors)

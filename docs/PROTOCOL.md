@@ -35,23 +35,8 @@ server generates the real values.
 No bearer. Response `200`:
 
 ```json
-{"data":{
-  "status":"ok",
-  "mode":"local-pilot",
-  "database":"ok",
-  "schema_version":3,
-  "version":"0.1.0",
-  "protocol":"v1",
-  "uptime_seconds":12.5,
-  "requests_served":4
-}}
+{"data":{"status":"ok","mode":"local-pilot"}}
 ```
-
-`status` is `ok` when the database answers a quick check and `degraded`
-otherwise. Each field is computed independently, so a probe never fails: the
-only response a load balancer cannot act on is a 5xx. `database` is `ok` or
-`unavailable`; `schema_version` is the recorded `PRAGMA user_version`, and `0`
-when it could not be read.
 
 ### `POST /v1/users`
 
@@ -277,118 +262,15 @@ integer limit from 1 to 1000. Exposing filters, cursors, and streaming over
 HTTP will be added as an explicit extension; v1 does not promise to resume
 a subscription from a cursor.
 
-## Run context, reservations and publication
-
-These routes cover milestone 6A and milestone 8A. A **run** is one attempt by
-one agent against one base commit.
-
-### `POST /v1/projects/{project_id}/context`
-
-Builds the manifest for a single run. Body:
-
-```json
-{"task_id":"task-1","base_sha":"<40 hex>","context_budget_bytes":65536}
-```
-
-`context_budget_bytes` is optional and defaults to `65536`; a negative or
-non-integer value is `400 invalid_field`. `after_revision` is optional.
-Response `200` with `task_id`, `base_sha`, `user_id`, `project_id`, `entries`,
-`omitted`, `budget_bytes`, `used_bytes`, `generated_at` and `after_revision`.
-
-Entries are ordered by key. Entries whose `status` is `superseded` are
-excluded. When the budget is exceeded, keys under `rules/` and `contracts/`
-are kept first, and the remainder are truncated to 200 bytes, flagged
-`"omitted": true` and listed by key. A budget of `0` returns an empty
-manifest rather than an error.
-
-### `POST /v1/projects/{project_id}/runs`
-
-Reserves a run. Body:
-
-```json
-{"run_id":"run-1","authorization_generation":1,"limits":{"max_agents":2}}
-```
-
-`limits` accepts `max_agents`, `max_inference_calls`, `max_capture_bytes` and
-`max_runtime_seconds` as positive integers, plus `allow_unknown_cost` as a
-boolean. `max_agents` defaults to `11` and may not exceed the project ceiling:
-a larger value is `400 invalid_limits`, not a larger limit. `max_runtime_seconds`
-defaults to `900`, which is what makes a crashed reservation reclaimable.
-
-Response `201` with `run_id`, `attempt_id`, `limits`, `state` (`reserved`),
-`created_at` and the authorisation generation. Reserving the same `run_id`
-again is idempotent: the same reservation returns, while a different
-generation or different limits is `409 reservation_mismatch`. When the live
-runs already consume the ceiling the answer is `409 agent_limit_reached`.
-
-### `GET /v1/projects/{project_id}/runs`
-
-Readable by any member. Returns `active`, `count` and `checked_at`, with
-`expires_at` per reservation. Expired reservations are reclaimed first, so
-the count reflects the real ceiling usage.
-
-### `POST /v1/projects/{project_id}/runs/settle`
-
-Body:
-
-```json
-{"run_id":"run-1","attempt_id":"...","measured_usage":{"inference_calls":3,"cost":0.25}}
-```
-
-Only the member that reserved the run may settle it; another member receives
-`403 reservation_foreign`. An unknown attempt is `404 reservation_not_found`
-and a second settlement is `409 already_settled`.
-
-Keys whose value is `null` or `"unknown"` are listed in `unknown_usage` and are
-**never rewritten to zero**. A `cost` that cannot be measured is refused with
-`409 cost_unknown` unless the reservation set `allow_unknown_cost`.
-
-### `POST /v1/projects/{project_id}/patches/accept`
-
-The single authority that decides whether a run may publish. Body:
-
-```json
-{
-  "run_id":"run-1",
-  "authorization_generation":1,
-  "lease_fences":{"file:src/api.py":41},
-  "base_sha":"<40 hex>",
-  "commit_sha":"<40 hex>",
-  "resources":["file:src/api.py"]
-}
-```
-
-Validation happens inside one write transaction. Each supplied fence must match
-a live lease that belongs to the caller and has not expired: otherwise
-`409 lease_missing`, `403 lease_foreign`, `409 fence_mismatch` or
-`409 lease_expired`. A stale authorisation generation is `409 generation_stale`.
-
-Both SHAs must be 40 lowercase hexadecimal characters and must differ; uppercase
-is rejected rather than normalised. Only `file:` resources may be accepted,
-because a deployment is not a patch. Declaring a resource that was not
-supplied with a fence is `400 invalid_patch`.
-
-Resubmitting the same `commit_sha` is idempotent and returns the original
-acceptance with `idempotent_replay: true`, so a lost response can be retried.
-One run cannot publish two different commits: `409 run_already_published`.
-
-This route **decides**; it does not apply. The integration checkout is not
-touched here.
-
-### `GET /v1/projects/{project_id}/patches`
-
-Optional `limit` between 1 and 100. Returns `items` with `commit_sha`,
-`base_sha`, `run_id`, `resources` and `accepted_at`, newest first.
-
 ## Errors and retry rules
 
 | HTTP | Situation | Client action |
 | --- | --- | --- |
 | `400` | Invalid JSON, field, type, resource, TTL, fence, duplicate `Content-Length`, or unsupported `Transfer-Encoding` | Fix the request; do not retry the same one |
 | `401` | Missing, invalid, or unknown bearer identity | Select a valid local credential |
-| `403` | Not a member, insufficient role, foreign lease, foreign reservation, rejected Origin/Host | Change permissions or destination explicitly |
+| `403` | Not a member, insufficient role, foreign lease, rejected Origin/Host | Change permissions or destination explicitly |
 | `404` | Missing route, project, invitation, or lease | Re-read identifiers; do not create implicit substitutes |
-| `409` | CAS, busy resource, fence, expiration, consumed invitation, agent ceiling, stale authorisation generation, or an already settled attempt | Re-read state and replan |
+| `409` | CAS, busy resource, fence, expiration, or consumed invitation | Re-read state and replan |
 | `413` | Body over 1 MiB | Reduce the body before resending |
 | `415` | Body with a `Content-Type` other than `application/json` | Send JSON with the correct header |
 | `500` | Unexpected internal failure | Preserve context, check the coordinator, and re-read before repeating mutations |

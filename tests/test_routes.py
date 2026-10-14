@@ -1,7 +1,10 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
+import socket
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from cshcli.client import Client
@@ -28,8 +31,8 @@ class MilestoneRouteTests(unittest.TestCase):
 
     def thread_shutdown(self, thread):
         self.server.shutdown()
-        self.server.server_close()
         thread.join(timeout=5)
+        self.server.server_close()
 
     def identity(self, name):
         client = Client(self.url)
@@ -147,6 +150,42 @@ class MilestoneRouteTests(unittest.TestCase):
                 with self.assertRaises(DomainError) as caught:
                     owner.request("POST", f"/v1/projects/{project}/context", payload)
                 self.assertEqual(caught.exception.status, 400)
+
+    def test_context_preserves_types_for_domain_validation(self):
+        owner = self.identity("ana")
+        project = self.project_for(owner)
+        for changed in ({"task_id": None}, {"task_id": 42}, {"base_sha": "not-a-sha"},
+                        {"after_revision": {}}, {"after_revision": -1}, {"after_revision": True}):
+            payload = dict({"task_id": "task", "base_sha": BASE}, **changed)
+            with self.subTest(changed=changed):
+                with self.assertRaises(DomainError) as caught:
+                    owner.request("POST", f"/v1/projects/{project}/context", payload)
+                self.assertEqual(caught.exception.status, 400)
+
+    def test_run_routes_do_not_coerce_identifiers_or_limits(self):
+        owner = self.identity("ana")
+        project = self.project_for(owner)
+        for changed in ({"run_id": None}, {"run_id": 42}, {"limits": []}, {"limits": False}, {"limits": None}):
+            payload = dict({"run_id": "run", "authorization_generation": 1}, **changed)
+            with self.subTest(changed=changed):
+                with self.assertRaises(DomainError) as caught:
+                    owner.request("POST", f"/v1/projects/{project}/runs", payload)
+                self.assertEqual(caught.exception.status, 400)
+
+    def test_excess_query_fields_are_a_client_error(self):
+        with self.assertRaises(DomainError) as caught:
+            Client(self.url).request("GET", "/health?" + "&".join(f"x{i}=1" for i in range(11)))
+        self.assertEqual((caught.exception.status, caught.exception.code), (400, "invalid_query"))
+
+    def test_unauthenticated_requests_do_not_wait_for_the_body(self):
+        with socket.create_connection(("127.0.0.1", self.port), timeout=2) as connection:
+            connection.sendall((f"POST /v1/projects HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\n"
+                                "Content-Type: application/json\r\nContent-Length: 1048576\r\n\r\n").encode())
+            self.assertIn(b" 401 ", connection.recv(1024).split(b"\r\n", 1)[0])
+
+    def test_malformed_run_bodies_are_refused(self):
+        owner = self.identity("ana")
+        project = self.project_for(owner)
         for payload in ({}, {"run_id": "r", "limits": {}},
                         {"run_id": "r", "authorization_generation": "1", "limits": {}},
                         {"run_id": "r", "authorization_generation": 1, "limits": {"max_agents": 0}}):
@@ -198,8 +237,8 @@ class HealthTests(unittest.TestCase):
         self.url = f"http://127.0.0.1:{self.port}"
         thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         thread.start()
-        self.addCleanup(thread.join, 5)
         self.addCleanup(self.server.server_close)
+        self.addCleanup(thread.join, 5)
         self.addCleanup(self.server.shutdown)
 
     def test_health_reports_the_real_state_without_a_bearer(self):
@@ -219,6 +258,24 @@ class HealthTests(unittest.TestCase):
         report = Client(self.url).request("GET", "/health")
         self.assertEqual(report["status"], "degraded")
         self.assertEqual(report["database"], "unavailable")
+
+    def test_health_counts_requests_concurrently(self):
+        before = Client(self.url).request("GET", "/health")["requests_served"]
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(lambda _: Client(self.url).request("GET", "/health"), range(24)))
+        after = Client(self.url).request("GET", "/health")["requests_served"]
+        self.assertEqual(after - before, 25)
+
+    def test_health_reports_deleted_database_without_recreating_it(self):
+        self.path.unlink()
+        report = Client(self.url).request("GET", "/health")
+        self.assertEqual(report["status"], "degraded")
+        self.assertFalse(self.path.exists())
+
+    def test_health_reports_a_schema_probe_failure_as_degraded(self):
+        with patch.object(self.server.store, "schema_version", side_effect=RuntimeError("failed")):
+            report = Client(self.url).request("GET", "/health")
+        self.assertEqual(report["status"], "degraded")
 
     def test_health_never_exposes_secrets(self):
         report = json.dumps(Client(self.url).request("GET", "/health"))

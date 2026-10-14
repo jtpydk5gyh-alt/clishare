@@ -2,6 +2,10 @@ import io
 import json
 import os
 import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
@@ -151,7 +155,7 @@ class ProviderTests(unittest.TestCase):
             {"type": "turn.completed", "usage": {"input_tokens": 1, "output_tokens": 1}}])
         help_text = "--sandbox read-only --json --ephemeral --ignore-user-config --model"
         with patch("cshcli.providers.shutil.which", return_value="official-codex"), \
-                patch("cshcli.providers.subprocess.run", side_effect=[
+                patch("cshcli.providers._run_capture", side_effect=[
                     subprocess.CompletedProcess([], 0, help_text, ""),
                     subprocess.CompletedProcess([], 0, events, "")]) as run:
             self.assertEqual(providers.chat("codex", "model-test", "hola; $(danger)"), "Hola")
@@ -160,15 +164,14 @@ class ProviderTests(unittest.TestCase):
         self.assertIn("--ignore-user-config", arguments)
         self.assertEqual(arguments[-1], "-")
         self.assertNotIn("hola; $(danger)", arguments)
-        self.assertEqual(run.call_args.kwargs["input"], "hola; $(danger)")
-        self.assertFalse(run.call_args.kwargs["shell"])
+        self.assertEqual(run.call_args.kwargs["prompt"], "hola; $(danger)")
         self.assertNotEqual(run.call_args.kwargs["cwd"], os.getcwd())
         self.assertIn("--skip-git-repo-check", arguments)
 
     def test_claude_disables_builtin_mcp_tools_and_customizations(self):
         help_text = "--tools --disallowedTools --safe-mode --no-session-persistence --output-format --model"
         with patch("cshcli.providers.shutil.which", return_value="official-claude"), \
-                patch("cshcli.providers.subprocess.run", side_effect=[
+                patch("cshcli.providers._run_capture", side_effect=[
                     subprocess.CompletedProcess([], 0, help_text, ""),
                     subprocess.CompletedProcess([], 0, "Hola", "")]) as run:
             self.assertEqual(providers.chat("claude-code", None, "Pregunta"), "Hola")
@@ -179,25 +182,14 @@ class ProviderTests(unittest.TestCase):
 
     def test_cli_missing_safety_flags_is_not_executed(self):
         with patch("cshcli.providers.shutil.which", return_value="old-cli"), \
-                patch("cshcli.providers.subprocess.run", return_value=subprocess.CompletedProcess([], 0, "--model", "")) as run:
+                patch("cshcli.providers._run_capture", return_value=subprocess.CompletedProcess([], 0, "--model", "")) as run:
             with self.assertRaises(DomainError) as error:
                 providers.chat("codex", None, "Pregunta")
         self.assertEqual(error.exception.code, "cli_version_unsupported")
         self.assertEqual(run.call_count, 1)
 
-    def test_failed_cli_never_returns_stderr_or_partial_output(self):
-        help_text = "--sandbox read-only --json --ephemeral --ignore-user-config --model"
-        with patch("cshcli.providers.shutil.which", return_value="official-codex"), \
-                patch("cshcli.providers.subprocess.run", side_effect=[
-                    subprocess.CompletedProcess([], 0, help_text, ""),
-                    subprocess.CompletedProcess([], 1, "private stdout", "private stderr")]):
-            with self.assertRaises(DomainError) as error:
-                providers.chat("codex", None, "Pregunta")
-        self.assertEqual(error.exception.code, "provider_cli_failed")
-        self.assertNotIn("private", str(error.exception))
-
     def test_gemini_cli_chat_refuses_unenforced_edit_guarantee(self):
-        with patch("cshcli.providers.subprocess.run") as run:
+        with patch("cshcli.providers._run_capture") as run:
             with self.assertRaises(DomainError) as error:
                 providers.chat("gemini-cli", None, "Pregunta")
         self.assertEqual(error.exception.code, "text_mode_unavailable")
@@ -238,7 +230,7 @@ class ProviderTests(unittest.TestCase):
     def test_capabilities_for_unknown_provider_returns_unknown(self):
         os.environ["OPENAI_API_KEY"] = "personal-openai-secret"
         with patch("cshcli.providers.shutil.which", return_value="official-binary"), \
-                patch("cshcli.providers.subprocess.run") as run:
+                patch("cshcli.providers._run_capture") as run:
             result = providers.capabilities("not-a-provider", "api", "model")
         self.assertFalse(result["configured"])
         self.assertFalse(result["verified"])
@@ -250,7 +242,7 @@ class ProviderTests(unittest.TestCase):
     def test_capabilities_for_unknown_mode_returns_unknown(self):
         os.environ["OPENAI_API_KEY"] = "personal-openai-secret"
         with patch("cshcli.providers.shutil.which", return_value="official-binary"), \
-                patch("cshcli.providers.subprocess.run") as run:
+                patch("cshcli.providers._run_capture") as run:
             for provider in ("openai", "codex", "claude-code", "gemini-cli"):
                 with self.subTest(provider=provider):
                     result = providers.capabilities(provider, "telepathy", "model")
@@ -263,7 +255,7 @@ class ProviderTests(unittest.TestCase):
 
     def test_capabilities_for_cli_provider_when_binary_missing(self):
         with patch("cshcli.providers.shutil.which", return_value=None), \
-                patch("cshcli.providers.subprocess.run") as run:
+                patch("cshcli.providers._run_capture") as run:
             result = providers.capabilities("claude-code", "cli")
         self.assertFalse(result["configured"])
         self.assertFalse(result["verified"])
@@ -277,7 +269,7 @@ class ProviderTests(unittest.TestCase):
     def test_capabilities_for_cli_provider_when_binary_present_and_help_lists_flags(self):
         help_text = "--sandbox read-only --json --ephemeral --ignore-user-config --model"
         with patch("cshcli.providers.shutil.which", return_value="official-codex"), \
-                patch("cshcli.providers.subprocess.run", return_value=subprocess.CompletedProcess(
+                patch("cshcli.providers._run_capture", return_value=subprocess.CompletedProcess(
                     [], 0, help_text, "")) as run:
             result = providers.capabilities("codex", "cli")
         self.assertEqual(run.call_args.args[0], ["official-codex", "exec", "--help"])
@@ -297,7 +289,7 @@ class ProviderTests(unittest.TestCase):
             with self.subTest(provider=provider):
                 arguments = ["official-codex", "exec", "--help"] if provider == "codex" else [binary, "--help"]
                 with patch("cshcli.providers.shutil.which", return_value=binary), \
-                        patch("cshcli.providers.subprocess.run", return_value=subprocess.CompletedProcess(
+                        patch("cshcli.providers._run_capture", return_value=subprocess.CompletedProcess(
                             [], 0, help_text, "")) as run:
                     result = providers.capabilities(provider, "cli")
                 self.assertEqual(run.call_args.args[0], arguments)
@@ -309,8 +301,7 @@ class ProviderTests(unittest.TestCase):
 
     def test_capabilities_falls_back_to_unverified_when_help_fails(self):
         with patch("cshcli.providers.shutil.which", return_value="official-codex"), \
-                patch("cshcli.providers.subprocess.run", return_value=subprocess.CompletedProcess(
-                    [], 1, "private stdout", "private stderr")):
+                patch("cshcli.providers._run_capture", side_effect=DomainError(502, "provider_cli_failed", "El CLI oficial falló.")):
             result = providers.capabilities("codex", "cli")
         self.assertFalse(result["verified"])
         self.assertFalse(result["configured"])
@@ -323,7 +314,7 @@ class ProviderTests(unittest.TestCase):
         os.environ["OPENAI_API_KEY"] = "personal-openai-secret"
         help_text = "--sandbox read-only --json --safe-mode --output-format --model"
         with patch("cshcli.providers.shutil.which", return_value="official-binary"), \
-                patch("cshcli.providers.subprocess.run", return_value=subprocess.CompletedProcess(
+                patch("cshcli.providers._run_capture", return_value=subprocess.CompletedProcess(
                     [], 0, help_text, "")):
             cases = (("openai", "api", "gpt-test"), ("anthropic", "api", None),
                      ("google", "api", "gemini-test"), ("codex", "cli", None),
@@ -342,27 +333,18 @@ class ProviderTests(unittest.TestCase):
     def test_native_binary_required_for_windows_batch_wrappers(self):
         with patch("cshcli.providers.os.name", "nt"), \
                 patch("cshcli.providers.shutil.which", return_value="C:/bin/claude.cmd"), \
-                patch("cshcli.providers.subprocess.run") as run:
+                patch("cshcli.providers._run_capture") as run:
             with self.assertRaises(DomainError) as error:
                 providers.login("claude")
         self.assertEqual(error.exception.code, "cli_native_required")
         run.assert_not_called()
 
     def test_invalid_model_is_rejected_before_starting_cli(self):
-        with patch("cshcli.providers.subprocess.run") as run:
+        with patch("cshcli.providers._run_capture") as run:
             with self.assertRaises(DomainError) as error:
                 providers.chat("codex", "--dangerously-bypass-approvals-and-sandbox", "Pregunta")
         self.assertEqual(error.exception.code, "model_invalid")
         run.assert_not_called()
-
-    def test_cli_timeout_drops_partial_output(self):
-        with patch("cshcli.providers.shutil.which", return_value="official-codex"), \
-                patch("cshcli.providers.subprocess.run", side_effect=subprocess.TimeoutExpired(
-                    ["codex"], 10, output="private partial output", stderr="private stderr")):
-            with self.assertRaises(DomainError) as error:
-                providers.chat("codex", None, "Pregunta")
-        self.assertEqual(error.exception.code, "provider_timeout")
-        self.assertNotIn("private", str(error.exception))
 
     def test_login_sanitizes_cshcli_and_api_secrets_preserving_official_auth(self):
         environment = {"OPENAI_API_KEY": "api-openai", "ANTHROPIC_API_KEY": "api-claude", "GEMINI_API_KEY": "api-google",
@@ -378,22 +360,6 @@ class ProviderTests(unittest.TestCase):
                     self.assertEqual(child, {"CODEX_API_KEY": "official-codex", "CLAUDE_CODE_OAUTH_TOKEN": "official-claude", "PATH": "safe-path"})
                     self.assertEqual(os.environ["OPENAI_API_KEY"], "api-openai")
                     self.assertEqual(os.environ["CSHCLI_TOKEN"], "session")
-
-    def test_help_and_chat_sanitize_child_environment(self):
-        environment = {"OPENAI_API_KEY": "api", "ANTHROPIC_API_KEY": "api2", "GEMINI_API_KEY": "api3",
-                       "CSHCLI_TOKEN": "session", "CSHCLI_INVITE_TOKEN": "invitation", "TERM": "xterm"}
-        help_text = "--sandbox read-only --json --ephemeral --ignore-user-config --model"
-        events = '\n'.join(json.dumps(event) for event in [
-            {"type": "item.completed", "item": {"type": "agent_message", "text": "Respuesta"}},
-            {"type": "turn.completed"}])
-        with patch.dict(os.environ, environment, clear=True), \
-                patch("cshcli.providers.shutil.which", return_value="official-codex"), \
-                patch("cshcli.providers.subprocess.run", side_effect=[
-                    subprocess.CompletedProcess([], 0, help_text, ""),
-                    subprocess.CompletedProcess([], 0, events, "")]) as run:
-            self.assertEqual(providers.chat("codex", None, "Pregunta"), "Respuesta")
-        for call in run.call_args_list:
-            self.assertEqual(call.kwargs["env"], {"TERM": "xterm"})
 
     def test_minimax_uses_the_openai_compatible_chat_completions_route(self):
         response = {"choices": [{"message": {"content": "respuesta minimax"}, "finish_reason": "stop"}]}
@@ -442,15 +408,52 @@ class ProviderTests(unittest.TestCase):
             self.assertNotIn("minimax-secret", redacted)
             self.assertIn("[REDACTED]", redacted)
 
-    def test_minimax_cli_chat_is_mediated_through_the_child_environment(self):
-        secret = "minimax-secret"
-        with patch.dict(os.environ, {"MINIMAX_API_KEY": secret}, clear=True), \
-                patch("cshcli.providers.subprocess.run",
-                      return_value=subprocess.CompletedProcess([], 0, "", "")) as run:
-            providers._run_capture(["fake"], prompt="hola", timeout=5)
-        environment = run.call_args.kwargs["env"]
-        self.assertNotIn(secret, str(environment))
-        self.assertNotIn("MINIMAX_API_KEY", environment)
+    def test_minimax_rejects_incomplete_responses(self):
+        os.environ["MINIMAX_API_KEY"] = "audit-fake-key"
+        for reason in ("length", "tool_calls", "content_filter", None):
+            with self.subTest(reason=reason), self.api_reply({"choices": [
+                    {"finish_reason": reason, "message": {"content": "partial"}}]}):
+                with self.assertRaises(DomainError) as caught:
+                    providers.chat("minimax", "MiniMax-M3", "hola")
+                self.assertEqual(caught.exception.code, "provider_response_incomplete")
+
+
+class CaptureTests(unittest.TestCase):
+    def test_capture_rejects_oversize_stdout_or_stderr(self):
+        for output in ("stdout", "stderr"):
+            with self.subTest(output=output), patch.object(providers, "_MAX_RESPONSE_BYTES", 1024):
+                command = [sys.executable, "-c", f"import sys; sys.{output}.write('x' * 8192)"]
+                with self.assertRaises(DomainError) as caught:
+                    providers._run_capture(command, timeout=5)
+                self.assertEqual(caught.exception.code, "provider_response_invalid")
+
+    def test_capture_timeout_stops_descendants_while_parent_is_running(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / "survived.txt"
+            child = "import pathlib,time; time.sleep(.8); pathlib.Path(" + repr(str(marker)) + ").write_text('survived')"
+            parent = "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c'," + repr(child) + "]); time.sleep(5)"
+            started = time.monotonic()
+            with self.assertRaises(DomainError) as caught:
+                providers._run_capture([sys.executable, "-c", parent], timeout=.2)
+            elapsed = time.monotonic() - started
+            time.sleep(.9)
+            self.assertEqual(caught.exception.code, "provider_timeout")
+            self.assertFalse(marker.exists())
+            self.assertLess(elapsed, .8)
+
+    def test_capture_sanitizes_environment_and_accepts_stdin(self):
+        environment = {"OPENAI_API_KEY": "api", "MINIMAX_API_KEY": "mini", "CSHCLI_TOKEN": "session"}
+        command = [sys.executable, "-c", "import os,sys; print(sys.stdin.read()); print(any(k in os.environ for k in ('OPENAI_API_KEY','MINIMAX_API_KEY','CSHCLI_TOKEN')))"]
+        with patch.dict(os.environ, environment):
+            result = providers._run_capture(command, prompt="hello", timeout=5)
+        self.assertEqual(result.stdout.splitlines(), ["hello", "False"])
+
+    def test_capture_rejects_failed_process_without_output(self):
+        command = [sys.executable, "-c", "import sys; print('private stdout'); print('private stderr', file=sys.stderr); sys.exit(1)"]
+        with self.assertRaises(DomainError) as caught:
+            providers._run_capture(command, timeout=5)
+        self.assertEqual(caught.exception.code, "provider_cli_failed")
+        self.assertNotIn("private", str(caught.exception))
 
 
 if __name__ == "__main__":
