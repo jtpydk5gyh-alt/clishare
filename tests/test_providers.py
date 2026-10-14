@@ -395,6 +395,63 @@ class ProviderTests(unittest.TestCase):
         for call in run.call_args_list:
             self.assertEqual(call.kwargs["env"], {"TERM": "xterm"})
 
+    def test_minimax_uses_the_openai_compatible_chat_completions_route(self):
+        response = {"choices": [{"message": {"content": "respuesta minimax"}, "finish_reason": "stop"}]}
+        with patch.dict(os.environ, {"MINIMAX_API_KEY": "minimax-secret"}, clear=True), \
+                patch("cshcli.providers._request", return_value=response) as request:
+            text = providers.chat("minimax", "MiniMax-M3", "hola")
+        self.assertEqual(text, "respuesta minimax")
+        url, payload, headers = request.call_args[0]
+        self.assertEqual(url, "https://api.minimax.io/v1/chat/completions")
+        self.assertEqual(payload["model"], "MiniMax-M3")
+        self.assertEqual(payload["messages"], [{"role": "user", "content": "hola"}])
+        self.assertEqual(payload["max_completion_tokens"], 4096)
+        self.assertEqual(headers["Authorization"], "Bearer minimax-secret")
+        self.assertNotIn("tools", payload)
+        self.assertNotIn("api_key", payload)
+
+    def test_minimax_requires_a_key_and_a_model(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(DomainError) as caught:
+                providers.chat("minimax", "MiniMax-M3", "hola")
+            self.assertEqual(caught.exception.code, "api_key_missing")
+            with self.assertRaises(DomainError) as caught:
+                providers.chat("minimax", None, "hola")
+            self.assertEqual(caught.exception.code, "model_required")
+
+    def test_minimax_capabilities_report_the_verified_endpoint_only(self):
+        with patch.dict(os.environ, {"MINIMAX_API_KEY": "minimax-secret"}, clear=True):
+            record = providers.capabilities("minimax", "api", model="MiniMax-M3")
+        self.assertTrue(record["configured"])
+        self.assertTrue(record["verified"])
+        self.assertTrue(record["text"])
+        self.assertFalse(record["tools_mediable"])
+        self.assertEqual(
+            record["endpoint_hint"], "https://api.minimax.io/v1/chat/completions")
+        self.assertEqual(record["price_available"], "unknown")
+        self.assertEqual(record["usage_available"], "unknown")
+        with patch.dict(os.environ, {}, clear=True):
+            record = providers.capabilities("minimax", "api", model="MiniMax-M3")
+        self.assertFalse(record["configured"])
+        self.assertFalse(record["verified"])
+
+    def test_minimax_key_is_redacted_from_errors_and_status(self):
+        with patch.dict(os.environ, {"MINIMAX_API_KEY": "minimax-secret"}, clear=True):
+            self.assertNotIn("minimax-secret", str(providers.status()))
+            redacted = providers._redact("fallo con minimax-secret dentro")
+            self.assertNotIn("minimax-secret", redacted)
+            self.assertIn("[REDACTED]", redacted)
+
+    def test_minimax_cli_chat_is_mediated_through_the_child_environment(self):
+        secret = "minimax-secret"
+        with patch.dict(os.environ, {"MINIMAX_API_KEY": secret}, clear=True), \
+                patch("cshcli.providers.subprocess.run",
+                      return_value=subprocess.CompletedProcess([], 0, "", "")) as run:
+            providers._run_capture(["fake"], prompt="hola", timeout=5)
+        environment = run.call_args.kwargs["env"]
+        self.assertNotIn(secret, str(environment))
+        self.assertNotIn("MINIMAX_API_KEY", environment)
+
 
 if __name__ == "__main__":
     unittest.main()

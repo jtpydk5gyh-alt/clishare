@@ -79,7 +79,7 @@ def parser():
     login = provider_commands.add_parser("login", help="Abrir el inicio de sesión del CLI oficial instalado")
     login.add_argument("provider", choices=["codex", "claude", "gemini"])
     chat = commands.add_parser("chat", help="Consulta de texto; claves API en el entorno local")
-    chat.add_argument("--provider", choices=["openai", "anthropic", "google", "codex", "claude-code", "gemini-cli"], required=True)
+    chat.add_argument("--provider", choices=["openai", "anthropic", "google", "minimax", "codex", "claude-code", "gemini-cli"], required=True)
     chat.add_argument("--model", help="Modelo explícito obligatorio para API keys")
     chat.add_argument("prompt")
     return root
