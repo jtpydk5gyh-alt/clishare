@@ -121,10 +121,28 @@ CREATE TABLE IF NOT EXISTS run_settlements (
     PRIMARY KEY (run_id, attempt_id),
     FOREIGN KEY (run_id, attempt_id) REFERENCES run_reservations(run_id, attempt_id)
 );
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    author_id TEXT NOT NULL REFERENCES users(id),
+    assignee_id TEXT,
+    title TEXT NOT NULL,
+    state TEXT NOT NULL,
+    base_sha TEXT,
+    commit_sha TEXT,
+    resources_json TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS task_dependencies (
+    task_id TEXT NOT NULL REFERENCES tasks(id),
+    depends_on TEXT NOT NULL REFERENCES tasks(id),
+    PRIMARY KEY (task_id, depends_on)
+);
 """
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _MEMORY_COLUMNS = (
     ("kind", "TEXT"),
@@ -504,35 +522,39 @@ class Store:
     def acquire_leases(self, user_id, project_id, agent_id, resources, ttl=120):
         with self._connection(write=True) as connection:
             role = self._authorize(connection, user_id, project_id, write=True)
-            agent_id = _text(agent_id, "agent_id", 120)
-            _integer(ttl, "ttl", 1, 3600)
-            if not isinstance(resources, list) or not 1 <= len(resources) <= 100:
-                raise DomainError(400, "invalid_resource", "Acquire 1..100 resources as a list.")
-            canonical = [_resource(value) for value in resources]
-            for index, resource in enumerate(canonical):
-                if resource.startswith("deploy:") and role != "owner":
-                    raise DomainError(403, "forbidden", "Only the project owner can acquire deploy leases.")
-                if any(_conflicts(resource, earlier) for earlier in canonical[:index]):
-                    raise DomainError(400, "overlapping_resources", "A resource batch cannot contain duplicate or overlapping paths.")
-            now = self.clock()
-            active = connection.execute(
-                "SELECT resource FROM leases WHERE project_id = ? AND expires_at > ?", (project_id, now)
-            ).fetchall()
-            for resource in canonical:
-                if any(_conflicts(resource, lease["resource"]) for lease in active):
-                    raise DomainError(409, "lease_conflict", f"Resource {resource} overlaps an active lease.")
-            acquired = []
-            for resource in canonical:
-                lease_id = str(uuid.uuid4())
-                cursor = connection.execute(
-                    "INSERT INTO leases(id, project_id, agent_id, user_id, resource, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    (lease_id, project_id, agent_id, user_id, resource, now + ttl),
-                )
-                acquired.append({"id": lease_id, "project_id": project_id, "agent_id": agent_id, "user_id": user_id,
-                                 "resource": resource, "fence": cursor.lastrowid, "expires_at": now + ttl})
-            self._event(connection, user_id, project_id, "leases.acquired", {"agent_id": agent_id, "leases": [
-                {"id": item["id"], "resource": item["resource"], "fence": item["fence"]} for item in acquired
-            ]})
+            return self._acquire(connection, user_id, project_id, agent_id, resources, ttl, role)
+
+    def _acquire(self, connection, user_id, project_id, agent_id, resources, ttl,
+                 role="owner"):
+        agent_id = _text(agent_id, "agent_id", 120)
+        _integer(ttl, "ttl", 1, 3600)
+        if not isinstance(resources, list) or not 1 <= len(resources) <= 100:
+            raise DomainError(400, "invalid_resource", "Acquire 1..100 resources as a list.")
+        canonical = [_resource(value) for value in resources]
+        for index, resource in enumerate(canonical):
+            if resource.startswith("deploy:") and role != "owner":
+                raise DomainError(403, "forbidden", "Only the project owner can acquire deploy leases.")
+            if any(_conflicts(resource, earlier) for earlier in canonical[:index]):
+                raise DomainError(400, "overlapping_resources", "A resource batch cannot contain duplicate or overlapping paths.")
+        now = self.clock()
+        active = connection.execute(
+            "SELECT resource FROM leases WHERE project_id = ? AND expires_at > ?", (project_id, now)
+        ).fetchall()
+        for resource in canonical:
+            if any(_conflicts(resource, lease["resource"]) for lease in active):
+                raise DomainError(409, "lease_conflict", f"Resource {resource} overlaps an active lease.")
+        acquired = []
+        for resource in canonical:
+            lease_id = str(uuid.uuid4())
+            cursor = connection.execute(
+                "INSERT INTO leases(id, project_id, agent_id, user_id, resource, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (lease_id, project_id, agent_id, user_id, resource, now + ttl),
+            )
+            acquired.append({"id": lease_id, "project_id": project_id, "agent_id": agent_id, "user_id": user_id,
+                             "resource": resource, "fence": cursor.lastrowid, "expires_at": now + ttl})
+        self._event(connection, user_id, project_id, "leases.acquired", {"agent_id": agent_id, "leases": [
+            {"id": item["id"], "resource": item["resource"], "fence": item["fence"]} for item in acquired
+        ]})
         return acquired
 
     def list_leases(self, user_id, project_id):
