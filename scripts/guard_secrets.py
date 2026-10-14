@@ -16,10 +16,18 @@ import sys
 from pathlib import Path
 
 
+ALLOWED_EMAIL = "jtpydk5gyh-alt@users.noreply.github.com"
+
+# The guard's own tests must contain the shapes they look for. This is the only
+# exemption, it is explicit, and it is scoped to that one file.
+SELF_EXEMPT = {"tests/test_guard.py"}
+
 PATTERNS = (
-    (re.compile(r"[A-Za-z0-9._%+-]+@(?!example\.(?:com|invalid)|remote\.example)"
+    (re.compile(r"@(?!example\.(?:com|invalid|org)|remote\.example|users\.noreply\.github\.com)"
                 r"[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
      "dirección de correo personal"),
+    (re.compile(r"@privaterelay\.appleid\.com"),
+     "dirección de correo privada; usa " + ALLOWED_EMAIL),
     (re.compile(r"[A-Za-z]:\\Users\\[A-Za-z0-9._-]+|/Users/[A-Za-z0-9._-]+/"),
      "ruta de usuario del sistema"),
     (re.compile(r"/home/[A-Za-z0-9._-]+/|C:\\\\Users\\\\"),
@@ -50,10 +58,17 @@ def committed_text(name: str, revision: str) -> str | None:
     return result.stdout
 
 
+def is_exempt(name: str) -> bool:
+    normalised = name.replace("\\", "/")
+    return any(normalised == entry or normalised.endswith("/" + entry) for entry in SELF_EXEMPT)
+
+
 def scan(paths: list[str], revision: str) -> list[tuple[str, int, str, str]]:
     findings: list[tuple[str, int, str, str]] = []
     for name in paths:
         if name.endswith(ALLOWLIST_SUFFIXES):
+            continue
+        if is_exempt(name):
             continue
         if not Path(name).exists():
             continue
@@ -71,21 +86,39 @@ def scan(paths: list[str], revision: str) -> list[tuple[str, int, str, str]]:
     return findings
 
 
+def identity_findings() -> list[str]:
+    problems = []
+    for variable in ("user.email", "committer.email"):
+        result = subprocess.run(["git", "config", "--get", variable],
+                                capture_output=True, text=True, check=False)
+        value = result.stdout.strip()
+        if value and value != ALLOWED_EMAIL:
+            problems.append(f"git {variable} = {value} (debe ser {ALLOWED_EMAIL})")
+    return problems
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     include_all = "--all" in arguments
     arguments = [item for item in arguments if item != "--all"]
     explicit = [item for item in arguments if not item.startswith("-")]
+    problems = identity_findings()
     findings = scan(tracked_files(include_all, explicit), "HEAD" if include_all else ":")
-    if not findings:
-        print("guard: sin datos personales en los ficheros revisados")
+    if not problems and not findings:
+        print(f"guard: sin datos personales; identidad {ALLOWED_EMAIL}")
         return 0
-    print("guard: datos personales detectados en ficheros publicables\n")
-    for name, number, label, sample in findings:
-        print(f"  {name}:{number}  {label}  ->  {sample}")
-    print("\nNo publiques estos datos. Usa un alias, un dominio .example o "
-          "una direccion noreply de GitHub.")
-    return 1
+    if problems:
+        print("guard: identidad de git incorrecta\n")
+        for problem in problems:
+            print(f"  {problem}")
+        print(f"\n  git config user.email {ALLOWED_EMAIL}")
+    if findings:
+        print("\nguard: datos personales detectados en ficheros publicables\n")
+        for name, number, label, sample in findings:
+            print(f"  {name}:{number}  {label}  ->  {sample}")
+        print("\nNo publiques estos datos. Usa un alias, un dominio .example o "
+              f"{ALLOWED_EMAIL}.")
+    return 1 if problems or findings else 0
 
 
 if __name__ == "__main__":
