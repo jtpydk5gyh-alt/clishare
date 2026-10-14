@@ -1,6 +1,6 @@
 # CLIShare: diseño de producto y arquitectura
 
-Fecha: 14 de octubre de 2026. Repositorio previsto: `jtpydk5gyh-alt/clishare`, privado. Este documento recoge decisiones iniciales del proyecto; no atribuye al usuario reglas de conversaciones que no estén disponibles.
+Fecha: 14 de octubre de 2026. Repositorio: `jtpydk5gyh-alt/clishare`. Se creó privado; el propietario ha decidido abrirlo bajo MIT de OSI. Sus preferencias de desarrollo confirmadas están en `AGENTS.md`.
 
 ## 1. Resultado que buscamos
 

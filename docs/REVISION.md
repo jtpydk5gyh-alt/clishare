@@ -14,7 +14,7 @@ CLIShare y el piloto iniciado antes de priorizar la planificación.
 | Evitar pisarse cambios | Distingue reservas cooperativas de enforcement en runner/integrador |
 | Despliegues coordinados | SHA/digest, idempotencia, aprobación, reconciliación y rollback condicionado |
 | Repositorio | Privado, cuenta y nombre confirmados; remoto Git configurado |
-| Reglas previas | No se atribuyen recuerdos ausentes; AGENTS.md identifica reglas nuevas |
+| Reglas del propietario | Preferencias confirmadas registradas en AGENTS.md y configuración global |
 
 ## Hallazgos tratados
 

@@ -7,6 +7,7 @@ name = "clishare"
 version = "0.1.0"
 description = "AI CLI with personal providers and shared project coordination"
 readme = "README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.11"
 authors = [{name = "CLIShare contributors"}]
 classifiers = [
@@ -17,6 +18,10 @@ classifiers = [
 
 [project.scripts]
 clishare = "clishare.cli:main"
+
+[project.urls]
+Repository = "https://github.com/jtpydk5gyh-alt/clishare"
+Issues = "https://github.com/jtpydk5gyh-alt/clishare/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
