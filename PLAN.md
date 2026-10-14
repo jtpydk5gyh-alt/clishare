@@ -1,23 +1,25 @@
-# Plan de CLIShare
+# CSHCLI plan
 
-El documento principal es el
-[superplan de producto e implementación](docs/superpowers/plans/2026-10-14-clishare.md).
-Es la fuente de referencia para construir el producto; este archivo facilita
-encontrarlo desde la raíz del repositorio.
+The main document is the
+[superpowers product and implementation plan](docs/superpowers/plans/2026-10-14-cshcli.md).
+It is the reference source for building the product; this file makes it easy
+to find from the repository root.
 
-El objetivo es que crees un proyecto, invites a otra persona y ambos trabajéis
-con cuentas de IA propias, coordinando cinco agentes tuyos y seis de la otra
-persona mediante memoria compartida, reservas, aislamiento y despliegues controlados.
+The goal is for you to create a project, invite another person, and have both
+of you work with your own AI accounts, coordinating five of your agents with
+six of theirs through shared memory, leases, isolation, and controlled
+deployments.
 
-| Documento | Para qué sirve |
+| Document | Purpose |
 | --- | --- |
-| [Superplan](docs/superpowers/plans/2026-10-14-clishare.md) | Producto, prioridades, arquitectura, fases, contratos, pruebas y aceptación |
-| [Diseño](docs/superpowers/specs/2026-10-14-clishare-design.md) | Decisiones de arquitectura e invariantes de coordinación |
-| [Protocolo](docs/PROTOCOL.md) | API exacta del piloto existente |
-| [Estado verificado](docs/ESTADO.md) | Qué existe, qué se ha probado y qué sigue propuesto |
-| [README](README.md) | Cómo ejecutar el piloto y sus límites actuales |
-| [Reglas](AGENTS.md) | Reglas iniciales del repositorio; no representan recuerdos de otros chats |
+| [Superplan](docs/superpowers/plans/2026-10-14-cshcli.md) | Product, priorities, architecture, phases, contracts, tests, and acceptance |
+| [Design](docs/superpowers/specs/2026-10-14-cshcli-design.md) | Architecture decisions and coordination invariants |
+| [Protocol](docs/PROTOCOL.md) | Exact API for the existing pilot |
+| [Verified status](docs/STATUS.md) | What exists, what has been tested, and what is still proposed |
+| [README](README.md) | How to run the pilot and its current limits |
+| [Agent rules](AGENTS.md) | Initial repository rules; not present on the public remote by owner decision |
 
-Prioridad actual del propietario: completar el plan antes de ampliar la implementación.
-La base local iniciada se conserva como punto de partida. Las capacidades futuras
-del plan no se consideran entregadas hasta cumplir sus pruebas de aceptación.
+Current owner priority: complete the plan before expanding the implementation.
+The local base already in place is preserved as a starting point. Future
+capabilities in the plan are not considered delivered until their acceptance
+tests pass.

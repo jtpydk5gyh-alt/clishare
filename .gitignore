@@ -8,7 +8,7 @@ dist/
 .coverage
 htmlcov/
 .pytest_cache/
-.clishare/
+.cshcli/
 *.sqlite*
 *.db
 .env
@@ -17,3 +17,7 @@ htmlcov/
 *.pem
 *.key
 _local/
+AGENTS.md
+docs/REVISION_PRIVATE.md
+docs/ESTADO_PRIVATE.md
+_workspace/

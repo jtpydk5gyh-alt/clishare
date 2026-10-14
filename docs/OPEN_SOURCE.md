@@ -1,30 +1,33 @@
-# Organización del proyecto
+# Project organisation
 
-Se revisaron repositorios oficiales el 14 de octubre de 2026:
+Official repositories were reviewed on 14 October 2026:
 
-| Proyecto | Práctica aplicada a CLIShare |
+| Project | Practice applied to CSHCLI |
 | --- | --- |
-| [VS Code](https://github.com/microsoft/vscode) | Identificar qué entrega el repo, documentar límites y enlazar planes |
-| [GitHub CLI](https://github.com/cli/cli) | Instalación, ejemplo útil y guía de contribución con pruebas reproducibles |
-| [uv](https://github.com/astral-sh/uv) | Definición breve del producto y comandos con resultado observable |
-| [FastAPI](https://github.com/fastapi/fastapi) | Separar código, pruebas y documentación; recorrido ejecutar y verificar |
+| [VS Code](https://github.com/microsoft/vscode) | State what the repo delivers, document limits, and link plans |
+| [GitHub CLI](https://github.com/cli/cli) | Install, useful example, and contribution guide with reproducible tests |
+| [uv](https://github.com/astral-sh/uv) | Short product definition and commands with observable output |
+| [FastAPI](https://github.com/fastapi/fastapi) | Separate code, tests, and documentation; an "execute and verify" walkthrough |
 
-La estructura existente `src/clishare`, `tests` y `docs` es suficiente para este
-piloto. README ofrece una entrada corta y USAGE conserva las instrucciones
-detalladas. LICENSE, CONTRIBUTING y SECURITY cubren licencia, colaboración y
-reportes privados. No se añaden componentes, directorios vacíos ni herramientas
-propias de monorepos grandes.
+The existing structure of `src/cshcli`, `tests`, and `docs` is enough for
+this pilot. The README provides a short entry point and `docs/USAGE.md`
+keeps the detailed instructions. `LICENSE`, `CONTRIBUTING.md`, and
+`SECURITY.md` cover licensing, collaboration, and private reports. No extra
+components, empty directories, or monorepo-only tooling are added.
 
-La licencia elegida por el propietario es
-[MIT de OSI](https://opensource.org/license/mit), sin modificaciones del texto
-de permisos. Se aplica al código y documentación propios; las APIs externas
-conservan sus condiciones. Las contribuciones externas conservan su autoría.
+The license chosen by the owner is
+[OSI MIT](https://opensource.org/license/mit), with no modifications to the
+permission text. It applies to the project's own code and documentation;
+external APIs keep their terms. External contributions keep their
+authorship.
 
-Las issues describen trabajo; las PRs presentan cambios para revisión, según
-la [guía de GitHub](https://docs.github.com/en/get-started/using-github/communicating-on-github).
-Los commits deben formar cambios coherentes y explicar su intención.
+Issues describe work; pull requests present changes for review, in line
+with the [GitHub guide](https://docs.github.com/en/get-started/using-github/communicating-on-github).
+Commits must form coherent changes and explain their intent.
 
-GitHub distingue el [registro de contribuciones](https://docs.github.com/en/account-and-profile/reference/profile-contributions-reference)
-de los [logros del perfil](https://docs.github.com/en/enterprise-cloud%40latest/account-and-profile/reference/profile-reference).
-Los logros reconocen eventos e hitos; no se promete un trofeo por un número
-arbitrario de commits ni se crean issues o PRs vacías para aumentar contadores.
+GitHub distinguishes the
+[contributions timeline](https://docs.github.com/en/account-and-profile/reference/profile-contributions-reference)
+from [profile achievements](https://docs.github.com/en/enterprise-cloud%40latest/account-and-profile/reference/profile-reference).
+Achievements recognise events and milestones; there is no promise of a
+trophy for an arbitrary number of commits, and no empty issues or PRs are
+created to inflate counters.
