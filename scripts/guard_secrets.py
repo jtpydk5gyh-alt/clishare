@@ -50,7 +50,14 @@ def tracked_files(include_all: bool, explicit: list[str]) -> list[str]:
 
 
 def committed_text(name: str, revision: str) -> str | None:
-    result = subprocess.run(["git", "show", f"{revision}:{name}"],
+    """Returns the recorded content of `name`, or None when it cannot be read.
+
+    The revision is normalised before joining: the index is spelled ":name",
+    so appending another colon produced "::name", which git rejects. The
+    rejected spec used to send the caller down the working-tree fallback.
+    """
+    prefix = revision[:-1] if revision.endswith(":") else revision
+    result = subprocess.run(["git", "show", f"{prefix}:{name}"],
                             capture_output=True, text=True, check=False, encoding="utf-8",
                             errors="strict")
     if result.returncode != 0:
@@ -63,27 +70,38 @@ def is_exempt(name: str) -> bool:
     return any(normalised == entry or normalised.endswith("/" + entry) for entry in SELF_EXEMPT)
 
 
-def scan(paths: list[str], revision: str) -> list[tuple[str, int, str, str]]:
+def scan(paths: list[str], revision: str) -> tuple[list[tuple[str, int, str, str]], list[str]]:
+    """Scans recorded content and reports anything unreadable as a separate list.
+
+    An unreadable entry used to fall through to the working tree, so a staged
+    blob git would not give up was quietly replaced by text that was never
+    committed. The guard passed on what it could not see. Unreadable is now a
+    refusal the caller must honour, never a substitution.
+    """
     findings: list[tuple[str, int, str, str]] = []
+    unreadable: list[str] = []
     for name in paths:
         if name.endswith(ALLOWLIST_SUFFIXES):
             continue
         if is_exempt(name):
             continue
-        if not Path(name).exists():
-            continue
-        text = committed_text(name, revision)
+        text = committed_text(name, revision) if revision else _read_worktree(name)
         if text is None:
-            try:
-                text = Path(name).read_text(encoding="utf-8")
-            except (UnicodeDecodeError, OSError):
-                continue
+            unreadable.append(name)
+            continue
         for number, line in enumerate(text.splitlines(), start=1):
             for pattern, label in PATTERNS:
                 match = pattern.search(line)
                 if match:
                     findings.append((name, number, label, match.group(0)[:60]))
-    return findings
+    return findings, unreadable
+
+
+def _read_worktree(name: str) -> str | None:
+    try:
+        return Path(name).read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        return None
 
 
 def identity_findings() -> list[str]:
@@ -116,8 +134,9 @@ def main(argv: list[str] | None = None) -> int:
     arguments = [item for item in arguments if item != "--all"]
     explicit = [item for item in arguments if not item.startswith("-")]
     problems = identity_findings()
-    findings = scan(tracked_files(include_all, explicit), "HEAD" if include_all else ":")
-    if not problems and not findings:
+    findings, unreadable = scan(tracked_files(include_all, explicit),
+                                "HEAD" if include_all else ":")
+    if not problems and not findings and not unreadable:
         print(f"guard: sin datos personales; identidad {ALLOWED_EMAIL}")
         return 0
     if problems:
@@ -129,9 +148,15 @@ def main(argv: list[str] | None = None) -> int:
         print("\nguard: datos personales detectados en ficheros publicables\n")
         for name, number, label, sample in findings:
             print(f"  {name}:{number}  {label}  ->  {redact_sample(sample)}")
+    if unreadable:
+        print("\nguard: no se pudo leer el contenido registrado\n")
+        for name in unreadable:
+            print(f"  {name}")
+        print("\nUn fichero que git no entrega no se da por limpio. Revisa el indice.")
+    if findings:
         print("\nNo publiques estos datos. Usa un alias, un dominio .example o "
               f"{ALLOWED_EMAIL}.")
-    return 1 if problems or findings else 0
+    return 1 if problems or findings or unreadable else 0
 
 
 if __name__ == "__main__":
