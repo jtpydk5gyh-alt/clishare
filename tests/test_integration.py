@@ -1,4 +1,8 @@
 import tempfile
+import sqlite3
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 import unittest
 from pathlib import Path
 
@@ -163,6 +167,52 @@ class IntegrationGateTests(unittest.TestCase):
         accepted = self.accept(fences=combined, resources=["file:tests/api_test.py"])
         self.assertEqual(
             accepted["resources"], ["file:src/api.py", "file:tests/api_test.py"])
+
+
+    def test_expiry_is_checked_after_acquiring_the_database_write_lock(self):
+        fences = self.lease(self.owner, ["file:src/api.py"], ttl=1)
+        original_connection = self.store._connection
+        started = threading.Event()
+        def connection(*args, **kwargs):
+            started.set()
+            return original_connection(*args, **kwargs)
+        self.store._connection = connection
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with closing(sqlite3.connect(self.path, isolation_level=None)) as blocker:
+                blocker.execute("BEGIN IMMEDIATE")
+                pending = pool.submit(self.accept, fences=fences)
+                self.assertTrue(started.wait(5))
+                self.now += 2
+                blocker.commit()
+            with self.assertRaises(DomainError) as caught:
+                pending.result(timeout=5)
+        self.assertEqual(caught.exception.code, "lease_expired")
+        self.assertEqual(self.gate.list_accepted(self.owner["id"], self.project["id"])["count"], 0)
+
+    def test_replay_returns_the_original_acceptance_and_requires_its_owner(self):
+        fences = self.lease(self.owner, ["file:src/api.py"])
+        first = self.accept(fences=fences, run_id="original")
+        self.now += 121
+        replay = self.accept(fences=fences, run_id="retry")
+        self.assertEqual({key: value for key, value in replay.items() if key != "idempotent_replay"},
+                         {key: value for key, value in first.items() if key != "idempotent_replay"})
+        self.assert_domain(403, lambda: self.accept(user=self.member, fences=fences, run_id="foreign"),
+                           "patch_foreign")
+        self.assert_domain(409, lambda: self.accept(fences=fences, base=OTHER, run_id="changed"),
+                           "patch_mismatch")
+        self.assert_domain(409, lambda: self.accept(fences={"file:never-leased": 999}, run_id="forged"),
+                           "patch_mismatch")
+
+    def test_patch_resources_use_the_same_canonical_form_as_leases(self):
+        fences = self.lease(self.owner, ["file:Src/Main.py"])
+        result = self.accept(fences={"file:Src/Main.py": fences["file:src/main.py"]},
+                             resources=["file:SRC/MAIN.PY"])
+        self.assertEqual(result["resources"], ["file:src/main.py"])
+
+    def test_future_generation_cannot_publish(self):
+        fences = self.lease(self.owner, ["file:src/api.py"])
+        self.assert_domain(409, lambda: self.accept(fences=fences, generation=2), "generation_stale")
+        self.assertEqual(self.gate.list_accepted(self.owner["id"], self.project["id"])["count"], 0)
 
 
 if __name__ == "__main__":

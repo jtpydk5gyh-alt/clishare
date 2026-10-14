@@ -88,8 +88,8 @@ class BrokerTests(unittest.TestCase):
         self.assertEqual(self.calls, [])
 
     def test_generate_defers_configuration_errors_to_the_provider_call(self):
-        result = self.broker.generate("run-1", "codex", None, _MANIFEST)
-        self.assertEqual(self.calls[0]["provider"], "codex")
+        result = self.broker.generate("run-1", "claude-code", None, _MANIFEST)
+        self.assertEqual(self.calls[0]["provider"], "claude-code")
         self.assertFalse(result["capabilities"]["configured"])
         self.assertTrue(result["capabilities"]["native_login"])
         self.assertEqual(result["capabilities"]["text"], "unknown")
@@ -156,6 +156,15 @@ class BrokerTests(unittest.TestCase):
     def test_child_environment_without_inherited_path_keeps_only_run_markers(self):
         child = self.broker.child_environment("run-2", "repo")
         self.assertEqual(child, {"CSHCLI_RUN_ID": "run-2", "CSHCLI_RUN_SCOPE": "repo"})
+
+
+    def test_generate_rejects_host_reading_cli_for_shared_context(self):
+        for prompt in (None, "Direct prompt with shared instructions"):
+            with self.subTest(prompt=prompt):
+                with self.assertRaises(DomainError) as caught:
+                    self.broker.generate("run-1", "codex", None, _MANIFEST, prompt=prompt)
+                self.assertEqual(caught.exception.code, "provider_isolation_unverified")
+        self.assertEqual(self.calls, [])
 
 
 if __name__ == "__main__":

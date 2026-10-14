@@ -136,7 +136,6 @@ _MEMORY_SELECT = (
 
 
 def _migrate_memory_columns(connection):
-    """Add the revision metadata columns that pilot databases do not have yet."""
     existing = {row["name"] for row in connection.execute("PRAGMA table_info(memory)")}
     for column, definition in _MEMORY_COLUMNS:
         if column not in existing:
@@ -144,16 +143,13 @@ def _migrate_memory_columns(connection):
 
 
 def _migrate_reservation_states(connection):
-    """Recreate run_reservations so an older pilot database accepts the abandoned state."""
     table = connection.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'run_reservations'"
     ).fetchone()
     if table is None or "abandoned" in table["sql"]:
         return
-    connection.execute("PRAGMA foreign_keys = OFF")
-    connection.execute("ALTER TABLE run_reservations RENAME TO run_reservations_legacy")
     connection.execute(
-        "CREATE TABLE run_reservations ("
+        "CREATE TABLE run_reservations_new ("
         " run_id TEXT NOT NULL,"
         " attempt_id TEXT NOT NULL,"
         " user_id TEXT NOT NULL REFERENCES users(id),"
@@ -165,10 +161,10 @@ def _migrate_reservation_states(connection):
         " PRIMARY KEY (run_id, attempt_id))"
     )
     connection.execute(
-        "INSERT INTO run_reservations SELECT * FROM run_reservations_legacy"
+        "INSERT INTO run_reservations_new SELECT * FROM run_reservations"
     )
-    connection.execute("DROP TABLE run_reservations_legacy")
-    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("DROP TABLE run_reservations")
+    connection.execute("ALTER TABLE run_reservations_new RENAME TO run_reservations")
 
 
 def _invalid_memory_metadata(message):
@@ -213,7 +209,6 @@ def _memory_metadata(metadata):
 
 
 def _memory_entry(row):
-    """Normalize a memory row; unreadable evidence degrades to None."""
     entry = dict(row)
     raw = entry.get("evidence")
     try:
@@ -291,13 +286,16 @@ class Store:
         self.db_path = str(db_path)
         self.clock = clock
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        with self._connection() as connection:
+        with self._connection(create=True) as connection:
             connection.execute("PRAGMA journal_mode=WAL")
             connection.executescript("BEGIN IMMEDIATE;" + _SCHEMA + "COMMIT;")
+            connection.execute("PRAGMA foreign_keys = OFF")
             connection.execute("BEGIN IMMEDIATE")
             try:
                 _migrate_memory_columns(connection)
                 _migrate_reservation_states(connection)
+                if connection.execute("PRAGMA foreign_key_check").fetchone():
+                    raise sqlite3.IntegrityError("Database contains invalid foreign keys.")
                 connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
                 connection.commit()
             except BaseException:
@@ -308,9 +306,13 @@ class Store:
         try:
             with self._connection() as connection:
                 row = connection.execute("PRAGMA quick_check").fetchone()
+                for table, definition in re.findall(r"CREATE TABLE IF NOT EXISTS (\w+) \((.*?)\);", _SCHEMA, re.DOTALL):
+                    columns = re.findall(r"^\s+(\w+) (?:TEXT|INTEGER|REAL)\b", definition, re.MULTILINE)
+                    connection.execute(f"SELECT {', '.join(columns)} FROM {table} LIMIT 0")
+                version = connection.execute("PRAGMA user_version").fetchone()[0]
+                return bool(row and row[0] == "ok" and version == SCHEMA_VERSION)
         except Exception:
             return False
-        return bool(row and row[0] == "ok")
 
     def schema_version(self) -> int:
         with self._connection() as connection:
@@ -318,8 +320,9 @@ class Store:
         return int(row[0]) if row else 0
 
     @contextmanager
-    def _connection(self, write=False):
-        connection = sqlite3.connect(self.db_path, timeout=30, isolation_level=None)
+    def _connection(self, write=False, create=False):
+        target = self.db_path if create else Path(self.db_path).resolve().as_uri() + "?mode=rw"
+        connection = sqlite3.connect(target, timeout=30, isolation_level=None, uri=not create)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA busy_timeout=30000")

@@ -72,7 +72,7 @@ python -m compileall -q src tests scripts
   tests that prove it. A change that weakens a guarantee is a breaking change
   even if the suite still passes.
 - **Never commit secrets.** This includes API keys, coordination tokens,
-  databases, and any local-only files excluded by `.gitignore`.
+  databases, and the owner's private memory under `.cshcli/`.
 
 ## Commits
 

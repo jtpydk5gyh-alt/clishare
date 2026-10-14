@@ -9,7 +9,7 @@ from contextlib import closing
 from pathlib import Path
 
 from cshcli.errors import DomainError
-from cshcli.store import Store
+from cshcli.store import Store, _SCHEMA
 
 
 _LEGACY_SCHEMA = """
@@ -507,6 +507,52 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(Store(self.path).list_memory(uid, pid)[0]["expires_at"], 0.5)
         negative = self.store.put_memory(uid, pid, "evidence/past", "body", 0, {"expires_at": -1})
         self.assertEqual(negative["expires_at"], -1.0)
+
+
+    def test_health_does_not_recreate_a_missing_database_or_accept_an_empty_one(self):
+        self.assertTrue(self.store.ping())
+        self.path.unlink()
+        self.assertFalse(self.store.ping())
+        self.assertFalse(self.path.exists())
+        with closing(sqlite3.connect(self.path)):
+            pass
+        self.assertFalse(self.store.ping())
+
+    def test_reservation_migration_preserves_settlements_and_fencing_sequence(self):
+        for settled in (False, True):
+            with self.subTest(settled=settled):
+                path = Path(self.temp.name) / f"legacy-reservations-{settled}.sqlite3"
+                with closing(sqlite3.connect(path)) as connection:
+                    connection.executescript(_SCHEMA.replace(
+                        "'reserved', 'settled', 'abandoned'", "'reserved', 'settled'"))
+                    connection.execute("INSERT INTO users VALUES ('u', 'u', 'u', 'token')")
+                    connection.execute("INSERT INTO projects VALUES ('p', 'p', 'u')")
+                    connection.execute("INSERT INTO memberships VALUES ('p', 'u', 'owner')")
+                    connection.execute("INSERT INTO leases VALUES (42, 'old', 'p', 'agent', 'u', 'file:a', 1)")
+                    connection.execute("INSERT INTO run_reservations VALUES ('r', 'a', 'u', 'p', 1, '{}', ?, 1)",
+                                       ("settled" if settled else "reserved",))
+                    if settled:
+                        connection.execute("INSERT INTO run_settlements VALUES ('r', 'a', ?, '[]', 2)", (json.dumps({"cost": 1}, separators=(",", ":")),))
+                    connection.commit()
+                migrated = Store(path, clock=lambda: self.now)
+                from cshcli.policy import Policy
+                if not settled:
+                    Policy(migrated).finish_run("u", "p", "r", "a", {"cost": 1})
+                with closing(sqlite3.connect(path)) as connection:
+                    self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+                    self.assertEqual(connection.execute("SELECT measured_usage_json FROM run_settlements").fetchone()[0],
+                                     '{"cost":1}')
+                    self.assertEqual({row[2] for row in connection.execute("PRAGMA foreign_key_list(run_settlements)")},
+                                     {"run_reservations"})
+                lease = migrated.acquire_leases("u", "p", "agent", ["file:a"])[0]
+                self.assertGreater(lease["fence"], 42)
+                self.assertTrue(Store(path).ping())
+
+    def test_health_rejects_an_incomplete_schema(self):
+        with closing(sqlite3.connect(self.path)) as connection:
+            connection.execute("ALTER TABLE memory DROP COLUMN kind")
+            connection.commit()
+        self.assertFalse(self.store.ping())
 
 
 if __name__ == "__main__":

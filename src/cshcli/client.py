@@ -1,4 +1,5 @@
 import json
+from http.client import HTTPException
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -6,6 +7,18 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from .errors import DomainError
 
 MAX_RESPONSE = 32 * 1024 * 1024
+
+
+def _read(response, size):
+    try:
+        raw = response.read(size)
+        if len(raw) < size and getattr(response, "length", 0):
+            raise HTTPException("truncated response")
+        return raw
+    except HTTPException:
+        raise DomainError(502, "invalid_response", "El coordinador devolvió una respuesta HTTP incompleta o inválida.") from None
+    except (TimeoutError, OSError):
+        raise DomainError(503, "coordinator_unavailable", "No se pudo leer la respuesta del coordinador. Comprueba el servicio y la conexión.") from None
 
 
 class NoRedirects(HTTPRedirectHandler):
@@ -38,22 +51,24 @@ class Client:
         except HTTPError as error:
             with error:
                 try:
-                    payload = json.loads(error.read(1024 * 1024))
+                    payload = json.loads(_read(error, 1024 * 1024))
                     detail = payload["error"]
                     code, message = detail["code"], detail["message"]
                     if not isinstance(code, str) or not isinstance(message, str):
                         raise ValueError("invalid error")
-                except (ValueError, KeyError, TypeError):
+                except (ValueError, KeyError, TypeError, RecursionError):
                     code, message = "http_error", f"El coordinador respondió HTTP {error.code}."
                 raise DomainError(error.code, code, message) from None
         except (URLError, TimeoutError, OSError):
             raise DomainError(503, "coordinator_unavailable", "No se pudo conectar al coordinador. Comprueba cshcli serve y CSHCLI_URL.") from None
+        except HTTPException:
+            raise DomainError(502, "invalid_response", "El coordinador devolvió una respuesta HTTP incompleta o inválida.") from None
         with response:
-            raw = response.read(MAX_RESPONSE + 1)
+            raw = _read(response, MAX_RESPONSE + 1)
             if len(raw) > MAX_RESPONSE:
                 raise DomainError(502, "response_too_large", "La respuesta supera 32 MiB; usa páginas más pequeñas.")
             try:
                 payload = json.loads(raw)
                 return payload["data"]
-            except (ValueError, KeyError, TypeError):
+            except (ValueError, KeyError, TypeError, RecursionError):
                 raise DomainError(502, "invalid_response", "El coordinador devolvió una respuesta JSON inválida.") from None
