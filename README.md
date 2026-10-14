@@ -18,7 +18,7 @@ and AI accounts while sharing decisions and reserving files.
 | Isolated worktrees | Each run gets its own detached worktree; traversal, absolute paths, reserved Windows names, symbolic links and junctions are refused |
 | Revocable authorisation | A generation counter per member and per agent; revoking one invalidates the runs already open |
 | AI providers | OpenAI, Anthropic, Google, **MiniMax**, plus the official Codex, Claude Code and Gemini CLIs, with a capability probe that never invents pricing |
-| Personal data guard | A pre-commit hook and a CI job that refuse personal addresses, user paths and a git identity other than the noreply form |
+| Personal data guard | A pre-commit hook and a **required** CI check that refuse personal addresses, private relay addresses, user paths and a git identity other than the noreply form. The guard reads the staged index, and fails closed if git cannot deliver a file |
 
 ## Status
 
@@ -228,6 +228,7 @@ $env:PYTHONPATH = "src"
 python -m unittest discover -s tests -v
 python -m compileall -q src tests scripts
 python scripts/cshcli.py --help
+python scripts/guard_secrets.py --all
 ```
 
 The tests use real SQLite, local HTTP, and provider fixtures. The synchronised
@@ -236,18 +237,30 @@ version, and invitation. They check permissions, expiration, persistent
 fencing, paths, atomic batches, and the absence of secrets in audit logs.
 Provider tests do not make paid calls or verify real logins.
 
-The [GitHub Actions template](docs/templates/ci.yml.example) will run the
-suite on Windows and Linux with Python 3.11, 3.12, and 3.13 once it is
-activated as `.github/workflows/ci.yml`. The credential used for the first
-push cannot publish workflows; CI remains pending activation with the
-required permission.
+CI runs on every push and pull request, on Windows and Linux with Python
+3.11, 3.12 and 3.13. It runs `compileall`, the suite and the personal data
+guard, and it fails if `main` ever carries a private relay address.
+
+## How changes reach main
+
+`main` cannot be pushed to directly and cannot be force-pushed or deleted.
+Every change arrives through a pull request, and the `Personal data guard`
+check is **required**: a pull request with a detected secret will not merge.
+The guard also refuses to merge rather than deleting history, so if a secret
+ever lands on `main` the fix is a history rewrite, not an automatic rollback.
+
+`CODEOWNERS` names the owner as the single reviewer. With one owner there is
+no second pair of eyes by design; see [Security](SECURITY.md) for what that
+means and for the limits CI does not yet cover.
 
 ## Next deliveries
 
-1. Remote service with HTTPS, verified accounts, token rotation, and member revocation.
-2. Per-task runner with worktrees, heartbeat, mediated tools, and path/symlink control.
-3. Tasks and quotas per person/provider, evidence-backed memory, and integration queue over SHA.
+1. **Sandbox for mediated tools and commands.** The one thing that stops
+   CSHCLI from really containing an agent: a process boundary, not a path
+   boundary.
+2. Remote service with HTTPS, verified accounts, token rotation, and member revocation.
+3. Task DAG and integration queue per SHA.
 4. Per-environment deployment pipeline with verifiable artefacts and rollback.
-5. Eligible native OAuth, streaming, cost metrics, packaging, and distribution.
+5. Eligible native OAuth, budgets, observability, and packaging.
 
 The plan develops each delivery with contracts, tests, and closure conditions.

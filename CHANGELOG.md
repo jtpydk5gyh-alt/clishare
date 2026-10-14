@@ -7,6 +7,32 @@ once it leaves alpha.
 
 ## [Unreleased]
 
+### Security
+- The personal data guard now reads the **staged index** instead of the working
+  tree. `committed_text` built the git spec as `f"{revision}:{name}"`, which for
+  the index revision produces `::name`; git rejects that, and the guard silently
+  fell back to scanning the file on disk. It therefore never examined the
+  content git was about to record. It now fails closed: a file git cannot
+  deliver is reported as unreadable rather than replaced by something else.
+- `Personal data guard` is a **required** status check on the `main-integrity`
+  ruleset, so a pull request carrying a detected secret can no longer merge.
+- `main` can no longer be force-pushed, deleted or updated outside a pull
+  request.
+- The rewrite helper `scripts/push_rewritten_main.py` now refuses to run against
+  a dirty tree instead of destroying uncommitted work with `reset --hard`, and
+  its restored ruleset keeps the required check.
+
+### Fixed
+- Removed `main-owner-merge`, a second ruleset that duplicated the pull-request
+  requirement and rejected every merge with "base branch policy prohibits the
+  merge", even with all checks green. Both rulesets had been created thirteen
+  seconds after the last successful merge.
+- Documented that a squash merge is attributed to the merging account's
+  primary email rather than to the branch's commit author. With a private relay
+  address set as the account's public primary email, every squash reintroduced
+  it. Setting that address to private visibility makes GitHub fall back to the
+  noreply form.
+
 ### Added
 - Milestone 6A: `ContextAssembler` builds a bounded per-run manifest, `Policy`
   reserves and settles runs against an enforced ceiling, and the revision

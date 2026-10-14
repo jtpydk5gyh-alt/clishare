@@ -24,7 +24,8 @@ plan lives in [the main document](superpowers/plans/2026-10-14-cshcli.md).
 | Automatic Git integration | Proposed, not yet implemented |
 | Deployment publish and rollback | Proposed; the pilot only reserves environments |
 | Native direct OAuth | Proposed, conditioned on official mechanism and eligibility |
-| Personal data guard | Pre-commit hook refuses personal emails, user paths and non-noreply identity |
+| Personal data guard | Pre-commit hook and a **required** CI check; refuses personal emails, private relay addresses, user paths and a non-noreply identity. Reads the staged index and fails closed |
+| Branch governance | Ruleset `main-integrity`: no force-push, no deletion, no direct updates, and `Personal data guard` required to merge |
 
 ## Local evidence
 
@@ -34,16 +35,14 @@ session. Verification used a standard CPython 3.12 installation; the
 interpreter path is machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests -v`
-returned **212 passing tests in 82 seconds**, with 2 skipped: the symbolic link
+returned **247 passing tests in 100 seconds**, with 2 skipped: the symbolic link
 cases on a host that does not grant the privilege, while the Windows junction
 case runs. Concurrent tests use eleven synchronised threads; they do not yet
 represent eleven distributed processes.
 
-Breakdown by module: 38 provider, 37 store, 24 policy, 20 workspace, 17
-integration, 14 broker, 11 guard, 10 context, and the HTTP and CLI route tests.
-
 `python -m compileall -q src tests scripts`, `python scripts/cshcli.py --help`,
-and `python scripts/cshcli.py --version` were also executed. The package was
+`python scripts/guard_secrets.py --all`, and
+`python scripts/push_rewritten_main.py` were also executed. The package was
 built locally with setuptools, with no runtime dependencies.
 
 Real AI accounts, quotas, billing, flags against installed official binaries,
@@ -54,7 +53,15 @@ mocks; HTTP and SQLite tests use real local components.
 across Windows and Linux with Python 3.11, 3.12 and 3.13. It was published by
 pushing the file over git, because the repository token lacks the `workflow`
 scope that the contents API requires. The twelve jobs pass on the current
-`main`.
+`main`, and `Personal data guard` is a required check on the `main-integrity`
+ruleset: a pull request carrying a detected secret cannot merge.
+
+**Attribution of merges is a known trap.** GitHub attributes a squash merge to
+the merging account's primary email, not to the branch's commit author. While
+the owner's account kept a private relay address as its public primary email,
+every squash reintroduced it and the history had to be rewritten again. With
+that address set to private visibility, GitHub falls back to the noreply form
+and merges stay clean; verified on two consecutive merges without a rewrite.
 
 The sandbox is not verified. `Workspace` refuses paths that escape the worktree,
 including symbolic links and Windows junctions, but it does not constrain an
@@ -75,5 +82,6 @@ Personal memory lives in a local path ignored by Git; it is not part of the
 distribution.
 
 No hosting provider or production target has been chosen. Style checks
-confirmed zero explanatory comments/docstrings and 58 passing tests after
-their removal. The pilot logic was not altered.
+confirmed zero explanatory comments/docstrings; the guard tests and the rewrite
+helper tests are the only intentional exception, since a guard with no tests
+cannot be trusted to still guard.

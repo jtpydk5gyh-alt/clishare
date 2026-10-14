@@ -118,7 +118,23 @@ Do not open a public issue for a vulnerability. Follow
 
 ## Continuous integration
 
-The CI workflow template lives at `docs/templates/ci.yml.example`. It is not yet
-active: publishing workflows requires a GitHub permission the project does not
-have. Until it is enabled, [docs/ci.md](docs/ci.md) describes what CI will run
-when it is activated.
+CI runs on every push and pull request, on Linux and Windows with Python 3.11,
+3.12 and 3.13. It compiles the package, runs the suite, and runs the personal
+data guard. See [docs/ci.md](docs/ci.md) for the jobs and their limits.
+
+`Personal data guard` is a **required** check: a pull request that trips the
+guard will not merge. It reads the content git is about to record, so run it
+yourself before pushing:
+
+```powershell
+python scripts/guard_secrets.py --all
+```
+
+The guard refuses personal email addresses, private relay addresses, system
+user paths, API tokens and private keys, and it requires the noreply git
+identity. Install the local hook once with
+`python scripts/install_hooks.py`; it never overwrites a hook you already
+have.
+
+`main` cannot be pushed to directly, force-pushed or deleted. Everything
+arrives through a pull request.
