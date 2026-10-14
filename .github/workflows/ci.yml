@@ -8,6 +8,32 @@ permissions:
   contents: read
 
 jobs:
+  guard:
+    name: Personal data guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Identity must be the noreply form
+        run: |
+          git config user.email jtpydk5gyh-alt@users.noreply.github.com
+          git config user.name Trankideal
+      - name: Scan every tracked file, not just the working tree
+        run: python scripts/guard_secrets.py --all
+      - name: History must not carry the private address
+        run: |
+          offenders=$(git log origin/main --pretty=format:'%ae' | grep -i 'privaterelay' || true)
+          if [ -n "$offenders" ]; then
+            echo "origin/main still carries the private relay address:" >&2
+            echo "$offenders" | sort -u >&2
+            exit 1
+          fi
+          echo "origin/main carries only the noreply address"
+
   test:
     strategy:
       fail-fast: false

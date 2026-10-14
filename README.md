@@ -4,15 +4,45 @@ AI CLI with personal credentials and shared project coordination. The idea: you
 create a project, invite other people, and everyone works with their own agents
 and AI accounts while sharing decisions and reserving files.
 
-**Status: local 0.1.0 pilot.** The CLI, local HTTP coordinator, SQLite, projects,
-invitations, versioned memory, leases, and text-based AI adapters are already in
-place. The remote multi-user service, the runner that controls writes, automatic
-worktrees, the integration queue, and real deployments are still in the plan.
+## What works today
+
+| Area | What it does |
+| --- | --- |
+| Projects and roles | `owner`, `member`, `viewer`; one-use invitations with an expiry |
+| Shared memory | Versioned writes with compare-and-set, bounded pagination, and revision metadata (`kind`, `scope`, `status`, `evidence`) |
+| Resource leases | Atomic acquisition, directory prefixes, TTL renewal and monotonic fences that survive a restart |
+| Run limits | A concurrency ceiling that is **enforced**, not merely stored, with reconciliation after a crash |
+| Context manifest | One bounded manifest per run, recording exactly which entries and versions it saw |
+| Publication gate | A serialised decision that verifies lease fences, ownership, expiry, the authorisation generation and both SHAs before a patch may be published |
+| Git verification | The gate can ask the repository whether the commits exist, whether the base is really an ancestor, and which paths the commit actually touches |
+| Isolated worktrees | Each run gets its own detached worktree; traversal, absolute paths, reserved Windows names, symbolic links and junctions are refused |
+| Revocable authorisation | A generation counter per member and per agent; revoking one invalidates the runs already open |
+| AI providers | OpenAI, Anthropic, Google, **MiniMax**, plus the official Codex, Claude Code and Gemini CLIs, with a capability probe that never invents pricing |
+| Personal data guard | A pre-commit hook and a CI job that refuse personal addresses, user paths and a git identity other than the noreply form |
+
+## Status
+
+**Local pilot, version 0.1.0.** The coordinator, the CLI, the coordination
+store and the publication gate are implemented and covered by tests that run on
+Linux and Windows with Python 3.11, 3.12 and 3.13.
+
+What is **not** done, and is stated plainly rather than implied:
+
+- **No sandbox.** The workspace is a path boundary. It stops a write from
+  leaving the worktree; it does not constrain an arbitrary command running
+  inside it, and it does not limit memory or processes.
+- **Leases are cooperative.** The coordinator records who holds what, and
+  refuses a second acquisition. It cannot stop your editor from saving over
+  the file. Only the runner will enforce that, in a later milestone.
+- **No cross-machine service.** The database is a local SQLite file. Two
+  people cannot collaborate through this yet.
+- **No real deployments.** `deploy reserve` reserves an environment name. It
+  publishes nothing.
 
 The [full plan](docs/superpowers/plans/2026-10-14-cshcli.md), the
-[design](docs/superpowers/specs/2026-10-14-cshcli-design.md), and the
-[HTTP protocol](docs/PROTOCOL.md) describe requirements, phases, permissions,
-invariants, risks, and acceptance criteria.
+[design](docs/superpowers/specs/2026-10-14-cshcli-design.md), the
+[status](docs/STATUS.md) and the [HTTP protocol](docs/PROTOCOL.md) describe
+requirements, phases, permissions, invariants, risks, and acceptance criteria.
 
 ## Run from source
 

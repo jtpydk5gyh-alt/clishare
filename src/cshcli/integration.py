@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import subprocess
 import time
+from pathlib import Path
 from typing import Callable
 
 from .errors import DomainError
@@ -47,6 +49,7 @@ class IntegrationGate:
         base_sha: str,
         commit_sha: str,
         resources: list[str] | None = None,
+        repo: str | Path | None = None,
     ) -> dict:
         if not isinstance(lease_fences, dict) or not lease_fences:
             raise DomainError(400, "invalid_patch", "Provide the fence of every lease you touched.")
@@ -65,10 +68,24 @@ class IntegrationGate:
         if missing:
             raise DomainError(400, "invalid_patch", f"Missing fence for: {', '.join(missing)}.")
 
+        git_report = None
+        if repo is not None:
+            git_report = self.verify_with_git(repo, base_sha, commit_sha)
+            outside = sorted(
+                path for path in git_report["changed_paths"]
+                if not any(path == item.removeprefix("file:") or
+                           path.startswith(item.removeprefix("file:") + "/")
+                           for item in normalized))
+            if outside:
+                raise DomainError(
+                    409, "changes_outside_lease",
+                    f"The commit touches paths that were not leased: {', '.join(outside)}.",
+                )
+
         with self.store._connection(write=True) as connection:
             self.store._authorize(connection, user_id, project_id, write=True)
             now = self.clock()
-            generation = self.store.authorization_generation(user_id, project_id)
+            generation = self.store.authorization_grant(connection, user_id, project_id)
             if type(authorization_generation) is not int:
                 raise DomainError(400, "invalid_generation", "authorization_generation must be an integer.")
             if authorization_generation != generation:
@@ -128,6 +145,48 @@ class IntegrationGate:
             "resources": sorted(normalized), "accepted_at": now,
             "idempotent_replay": False,
         }
+
+    def verify_with_git(self, repo: Path, base_sha: str, commit_sha: str) -> dict:
+        """Checks the two commits exist and reports what the head actually touches."""
+        repository = Path(repo)
+        if not (repository / ".git").exists():
+            raise DomainError(400, "repo_missing", "The repository path has no .git directory.")
+        missing = [sha for sha in (base_sha, commit_sha)
+                   if not self._commit_exists(repository, sha)]
+        if missing:
+            raise DomainError(
+                409, "commit_unknown",
+                f"The repository does not contain: {', '.join(missing)}.",
+            )
+        if not self._is_ancestor(repository, base_sha, commit_sha):
+            raise DomainError(
+                409, "base_not_ancestor",
+                "base_sha is not an ancestor of commit_sha; the patch does not build on the claimed base.",
+            )
+        changed = self._changed_paths(repository, base_sha, commit_sha)
+        return {"verified": True, "changed_paths": changed}
+
+    @staticmethod
+    def _commit_exists(repository: Path, sha: str) -> bool:
+        result = subprocess.run(
+            ["git", "cat-file", "-e", f"{sha}^{{commit}}"], cwd=str(repository),
+            shell=False, check=False, capture_output=True, text=True)
+        return result.returncode == 0
+
+    @staticmethod
+    def _is_ancestor(repository: Path, ancestor: str, descendant: str) -> bool:
+        result = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+            cwd=str(repository), shell=False, check=False, capture_output=True, text=True)
+        return result.returncode == 0
+
+    @staticmethod
+    def _changed_paths(repository: Path, base_sha: str, commit_sha: str) -> list[str]:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "-z", f"{base_sha}..{commit_sha}"],
+            cwd=str(repository), shell=False, check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace")
+        return sorted({line.strip('"') for line in result.stdout.split("\0") if line.strip('"')})
 
     def list_accepted(self, user_id: str, project_id: str, limit: int = 10) -> dict:
         if type(limit) is not int or limit < 1 or limit > 100:

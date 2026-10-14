@@ -221,7 +221,7 @@ class Handler(BaseHTTPRequestHandler):
                     user, project, required(body, "run_id"),
                     _integer(body, "authorization_generation"),
                     required(body, "lease_fences"), _text(body, "base_sha"),
-                    _text(body, "commit_sha"), body.get("resources"))
+                    _text(body, "commit_sha"), body.get("resources"), body.get("repo"))
             if resource == "leases" and len(path) in {5, 6}:
                 lease_id = path[4]
                 if len(path) == 6 and path[5] == "renew" and method == "POST":

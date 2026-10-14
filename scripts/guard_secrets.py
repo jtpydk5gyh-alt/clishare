@@ -97,6 +97,19 @@ def identity_findings() -> list[str]:
     return problems
 
 
+def redact_sample(sample: str) -> str:
+    """Removes anything that could be a usable credential from what gets printed.
+
+    A guard that echoes the secret it found has turned a blocked commit into a
+    leaked one: the value now sits in the terminal, in CI logs, and in the
+    build output of whoever tried to commit it. The location is enough to find
+    the value, so only the kind of finding is reported.
+    """
+    visible = len(sample) - len(sample.lstrip("*_"))
+    masked = "*" * min(visible, 4)
+    return f"{masked} ({len(sample)} caracteres)"
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     include_all = "--all" in arguments
@@ -115,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
     if findings:
         print("\nguard: datos personales detectados en ficheros publicables\n")
         for name, number, label, sample in findings:
-            print(f"  {name}:{number}  {label}  ->  {sample}")
+            print(f"  {name}:{number}  {label}  ->  {redact_sample(sample)}")
         print("\nNo publiques estos datos. Usa un alias, un dominio .example o "
               f"{ALLOWED_EMAIL}.")
     return 1 if problems or findings else 0
