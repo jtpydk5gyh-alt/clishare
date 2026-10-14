@@ -71,6 +71,26 @@ CREATE TABLE IF NOT EXISTS events (
     created_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS events_project_id ON events(project_id, id);
+CREATE TABLE IF NOT EXISTS run_reservations (
+    run_id TEXT NOT NULL,
+    attempt_id TEXT NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    authorization_generation INTEGER NOT NULL,
+    limits_json TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('reserved', 'settled')),
+    created_at REAL NOT NULL,
+    PRIMARY KEY (run_id, attempt_id)
+);
+CREATE TABLE IF NOT EXISTS run_settlements (
+    run_id TEXT NOT NULL,
+    attempt_id TEXT NOT NULL,
+    measured_usage_json TEXT NOT NULL,
+    unknown_usage_json TEXT NOT NULL,
+    settled_at REAL NOT NULL,
+    PRIMARY KEY (run_id, attempt_id),
+    FOREIGN KEY (run_id, attempt_id) REFERENCES run_reservations(run_id, attempt_id)
+);
 """
 
 
@@ -490,3 +510,10 @@ class Store:
                 event["data"] = json.loads(event["data"])
                 events.append(event)
             return events
+
+    def authorization_generation(self, user_id: str, project_id: str, agent_id: str | None = None) -> int:
+        if agent_id is not None:
+            _text(agent_id, "agent_id", 120)
+        with self._connection() as connection:
+            self._authorize(connection, user_id, project_id)
+        return 1
