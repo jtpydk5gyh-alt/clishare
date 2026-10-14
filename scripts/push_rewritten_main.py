@@ -27,6 +27,12 @@ REPOSITORY = "jtpydk5gyh-alt/cshcli"
 INTEGRITY_RULES = [
     {"type": "deletion"},
     {"type": "non_fast_forward"},
+    {"type": "required_status_checks", "parameters": {
+        "required_status_checks": [{"context": "Personal data guard",
+                                    "integration_id": 15368}],
+        "strict_required_status_checks_policy": True,
+        "do_not_enforce_on_create": False,
+    }},
     {"type": "pull_request", "parameters": {
         "allowed_merge_methods": ["merge", "squash", "rebase"],
         "dismiss_stale_reviews_on_push": True,
@@ -35,6 +41,7 @@ INTEGRITY_RULES = [
         "required_approving_review_count": 0,
         "required_review_thread_resolution": True,
         "required_reviewers": [],
+        "require_extra_approval_for_unattributed_changes": False,
     }},
 ]
 OWNER_MERGE_RULES = [{"type": "update", "parameters": {"update_allows_fetch_and_merge": False}}]
@@ -94,7 +101,21 @@ def rewrite(commit: str) -> str:
     return result.stdout.strip()
 
 
+def dirty_paths() -> list[str]:
+    result = git("status", "--porcelain")
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
 def main() -> int:
+    pending = [line for line in dirty_paths() if not line.startswith("??")]
+    if pending:
+        print("el arbol tiene cambios sin commitear; este helper hace "
+              "reset --hard y los destruiria:", file=sys.stderr)
+        for line in pending:
+            print(f"  {line}", file=sys.stderr)
+        print("\nCommitea, guarda en un worktree, o vuelve a correrlo en un "
+              "clon limpio.", file=sys.stderr)
+        return 1
     git("fetch", "origin", "--prune")
     git("reset", "--hard", "origin/main")
     current = git("rev-parse", "main").stdout.strip()
