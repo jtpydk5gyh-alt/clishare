@@ -1,0 +1,4 @@
+# CODEOWNERS — verified owner identity required for all reviews.
+# Keep this file the only reviewer gate until the project has at least 3 active reviewers.
+
+*       @jtpydk5gyh-alt
