@@ -7,10 +7,10 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from clishare.cli import main
-from clishare.client import Client
-from clishare.errors import DomainError
-from clishare.server import make_server
+from cshcli.cli import main
+from cshcli.client import Client
+from cshcli.errors import DomainError
+from cshcli.server import make_server
 
 
 class CliTests(unittest.TestCase):
@@ -25,11 +25,11 @@ class CliTests(unittest.TestCase):
             server = make_server(Path(temp) / "db.sqlite", port=0)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
-            env = {"CLISHARE_URL": f"http://127.0.0.1:{server.server_port}"}
+            env = {"CSHCLI_URL": f"http://127.0.0.1:{server.server_port}"}
             try:
                 code, out, _ = self.invoke(["auth", "register", "ana"], env)
                 self.assertEqual(code, 0)
-                env["CLISHARE_TOKEN"] = json.loads(out)["token"]
+                env["CSHCLI_TOKEN"] = json.loads(out)["token"]
                 code, out, _ = self.invoke(["project", "create", "collab"], env)
                 self.assertEqual(code, 0)
                 project = json.loads(out)["id"]
@@ -55,7 +55,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(json.loads(err)["error"]["code"], "authentication_required")
 
     def test_provider_commands_delegate_without_coordinator(self):
-        with patch("clishare.cli.providers.chat", return_value="answer") as chat:
+        with patch("cshcli.cli.providers.chat", return_value="answer") as chat:
             code, out, _ = self.invoke(["chat", "--provider", "openai", "--model", "example-model", "hello"])
             self.assertEqual((code, out.strip()), (0, "answer"))
             chat.assert_called_once_with("openai", "example-model", "hello")

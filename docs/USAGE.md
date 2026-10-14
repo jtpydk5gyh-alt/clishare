@@ -1,219 +1,221 @@
-# CLIShare
+# CSHCLI
 
-CLI de IA con credenciales personales y coordinación compartida de proyectos.
-La idea: tú creas un proyecto, invitas a otras personas y cada una trabaja con sus
-agentes y sus cuentas de IA, compartiendo decisiones y reservando archivos.
+AI CLI with personal credentials and shared project coordination. The idea: you
+create a project, invite other people, and everyone works with their own agents
+and AI accounts while sharing decisions and reserving files.
 
-**Estado: piloto local 0.1.0.** Ya hay CLI, coordinador HTTP local, SQLite,
-proyectos, invitaciones, memoria versionada, reservas y adaptadores de texto IA.
-El servicio remoto multiusuario, el runner que controla escrituras, los worktrees
-automáticos, la cola de integración y los despliegues reales están en el plan.
+**Status: local 0.1.0 pilot.** The CLI, local HTTP coordinator, SQLite, projects,
+invitations, versioned memory, leases, and text-based AI adapters are already in
+place. The remote multi-user service, the runner that controls writes, automatic
+worktrees, the integration queue, and real deployments are still in the plan.
 
-El [plan completo](superpowers/plans/2026-10-14-clishare.md), el
-[diseño](superpowers/specs/2026-10-14-clishare-design.md) y el
-[protocolo HTTP](PROTOCOL.md) describen requisitos, fases, permisos,
-invariantes, riesgos y criterios de aceptación. [AGENTS.md](../AGENTS.md) establece
-las reglas iniciales de trabajo del repositorio.
+The [full plan](superpowers/plans/2026-10-14-cshcli.md), the
+[design](superpowers/specs/2026-10-14-cshcli-design.md), and the
+[HTTP protocol](PROTOCOL.md) describe requirements, phases, permissions,
+invariants, risks, and acceptance criteria.
 
-## Ejecutar desde el código
+## Run from source
 
-Requisito: Python 3.11 o posterior. El piloto no necesita dependencias de ejecución.
-Desde la raíz del repositorio:
+Requirement: Python 3.11 or later. The pilot needs no runtime dependencies. From
+the repository root:
 
 ```powershell
-python scripts/clishare.py --help
-python scripts/clishare.py serve
+python scripts/cshcli.py --help
+python scripts/cshcli.py serve
 ```
 
-El coordinador escucha en `http://127.0.0.1:8765` y guarda su base de datos en
-`.clishare/coordinator.sqlite3`. Esa carpeta está ignorada por Git. El servidor de
-este corte admite exclusivamente loopback; la fase de servicio remoto incluye
-HTTPS, identidad verificada, límites de peticiones y administración de miembros.
+The coordinator listens on `http://127.0.0.1:8765` and stores its database in
+`.cshcli/coordinator.sqlite3`. That folder is ignored by Git. The server in
+this cut only accepts loopback; the remote service phase covers HTTPS, verified
+identity, request limits, and member administration.
 
-Para instalar el comando en un entorno virtual:
+To install the command in a virtual environment:
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\python -m pip install -e .
-.venv\Scripts\clishare --help
+.venv\Scripts\cshcli --help
 ```
 
-En Linux/macOS: `.venv/bin/python -m pip install -e .` y `.venv/bin/clishare`.
-El empaquetado usa setuptools; el primer comando de instalación puede descargarlo.
+On Linux/macOS: `.venv/bin/python -m pip install -e .` and `.venv/bin/cshcli`.
+Packaging uses setuptools; the first install command may download it.
 
-## Crear un proyecto e invitar a alguien
+## Create a project and invite someone
 
-Mantén el servidor en la primera terminal. En una segunda terminal PowerShell:
+Keep the server running in the first terminal. In a second PowerShell:
 
 ```powershell
-$identity = python scripts/clishare.py auth register ana | ConvertFrom-Json
-$env:CLISHARE_TOKEN = $identity.token
-$project = python scripts/clishare.py project create mi-proyecto | ConvertFrom-Json
+$identity = python scripts/cshcli.py auth register ana | ConvertFrom-Json
+$env:CSHCLI_TOKEN = $identity.token
+$project = python scripts/cshcli.py project create my-project | ConvertFrom-Json
 $projectId = $project.id
-python scripts/clishare.py project list
-python scripts/clishare.py project invite $projectId --role member --ttl 3600
+python scripts/cshcli.py project list
+python scripts/cshcli.py project invite $projectId --role member --ttl 3600
 ```
 
-El token personal de registro se entrega una vez y en la base de datos solo se
-guarda su hash. Consérvalo en un almacén local seguro; este corte no tiene
-recuperación ni rotación de tokens. La invitación también se devuelve una vez,
-caduca y solo puede aceptarse una vez. Compártela con su destinatario por un canal
-privado. CLIShare no envía mensajes ni invitaciones por correo automáticamente.
+The personal registration token is delivered once and only its hash is stored
+in the database. Keep it in a local secure store; this cut has no recovery or
+token rotation. The invitation is also returned once, expires, and can only be
+accepted once. Share it with its recipient over a private channel. CSHCLI
+does not send messages or invitations by email automatically.
 
-En otra terminal que acceda al mismo coordinador local:
+In another terminal that reaches the same local coordinator:
 
 ```powershell
-$identity = python scripts/clishare.py auth register luis | ConvertFrom-Json
-$env:CLISHARE_TOKEN = $identity.token
-python scripts/clishare.py project join
-python scripts/clishare.py project list
+$identity = python scripts/cshcli.py auth register luis | ConvertFrom-Json
+$env:CSHCLI_TOKEN = $identity.token
+python scripts/cshcli.py project join
+python scripts/cshcli.py project list
 ```
 
-`project join` solicita la invitación sin mostrarla. También admite
-`--invite-stdin` para automatización. Este ejemplo demuestra dos identidades en
-un solo equipo; la colaboración entre equipos necesita la fase de servicio remoto.
+`project join` requests the invitation without showing it. It also accepts
+`--invite-stdin` for automation. This example demonstrates two identities on a
+single machine; cross-machine collaboration needs the remote service phase.
 
-| Rol | Leer proyecto, memoria, reservas y eventos | Editar memoria y reservar archivos | Invitar y reservar despliegues |
+| Role | Read project, memory, leases, and events | Edit memory and reserve files | Invite and reserve deployments |
 | --- | --- | --- | --- |
-| owner | Sí | Sí | Sí |
-| member | Sí | Sí | No |
-| viewer | Sí | No | No |
+| owner | Yes | Yes | Yes |
+| member | Yes | Yes | No |
+| viewer | Yes | No | No |
 
-## Memoria y reservas
-
-```powershell
-python scripts/clishare.py memory put $projectId architecture --content "Un worktree por tarea" --expected-version 0
-python scripts/clishare.py memory list $projectId
-python scripts/clishare.py memory put $projectId architecture --content "Un worktree y una rama por tarea" --expected-version 1
-python scripts/clishare.py lease acquire $projectId ana-1 file:src/auth.py file:tests/test_auth.py --ttl 120
-python scripts/clishare.py lease list $projectId
-```
-
-Cada entrada de memoria tiene autor, fecha y versión. `0` crea una entrada; una
-actualización debe indicar la última versión leída. `memory list` devuelve
-`items` y `next_cursor`; si hay más entradas, usa `--after` con ese cursor.
-`--limit` permite de 1 a 10 entradas por página. Un conflicto devuelve error
-409 y obliga a releer, evitando sobrescribir el cambio de otra persona. También
-puedes usar `memory put ... --file archivo.md --expected-version N` o `--file -`.
-
-Una reserva de `file:src` entra en conflicto con `file:src/auth.py`. Recursos
-disjuntos pueden trabajarse en paralelo. Un lote se adquiere completo o se rechaza
-completo. Las rutas son relativas, con `/`, sin `..`, rutas absolutas ni nombres
-ambiguos de Windows; el coordinador compara mayúsculas de forma conservadora.
-
-La salida incluye `id`, `fence` y `expires_at` para cada recurso. Renueva antes de
-que venza y usa los valores de esa reserva:
+## Memory and leases
 
 ```powershell
-python scripts/clishare.py lease renew $projectId ID_DE_RESERVA FENCE --ttl 120
-python scripts/clishare.py lease release $projectId ID_DE_RESERVA FENCE
-python scripts/clishare.py events $projectId
+python scripts/cshcli.py memory put $projectId architecture --content "One worktree per task" --expected-version 0
+python scripts/cshcli.py memory list $projectId
+python scripts/cshcli.py memory put $projectId architecture --content "One worktree and one branch per task" --expected-version 1
+python scripts/cshcli.py lease acquire $projectId ana-1 file:src/auth.py file:tests/test_auth.py --ttl 120
+python scripts/cshcli.py lease list $projectId
 ```
 
-TTL predeterminado: 120 segundos; rango: 1–3600. La renovación es manual en este
-corte. Los fences son crecientes y persistentes: un titular antiguo no puede
-renovar o liberar una reserva vencida o reasignada usando un valor obsoleto.
+Each memory entry has an author, a timestamp, and a version. `0` creates an
+entry; an update must reference the latest version read. `memory list` returns
+`items` and `next_cursor`; if there are more entries, use `--after` with that
+cursor. `--limit` accepts between 1 and 10 entries per page. A conflict returns
+error 409 and forces a re-read, preventing you from overwriting someone else's
+change. You can also use `memory put ... --file path.md --expected-version N`
+or `--file -`.
 
-**Límite actual:** una reserva es un acuerdo comprobado por el coordinador.
-Todavía no intercepta escrituras de herramientas externas ni conecta el chat
-con un agente editor. El runner y la validación de parches del siguiente hito
-aplicarán esas reservas a los cambios de código.
+A lease on `file:src` conflicts with `file:src/auth.py`. Disjoint resources can
+be worked on in parallel. A batch is acquired in full or rejected in full.
+Paths are relative, use `/`, and disallow `..`, absolute paths, and ambiguous
+Windows names; the coordinator compares case conservatively.
 
-## Cuentas de IA y API keys
-
-La identidad de CLIShare y las cuentas de IA son independientes. El coordinador
-no recibe claves de proveedores; las llamadas se realizan desde el CLI local.
+The response includes `id`, `fence`, and `expires_at` for each resource. Renew
+before the lease expires and reuse the values from that lease:
 
 ```powershell
-python scripts/clishare.py provider status
-python scripts/clishare.py provider login codex
-python scripts/clishare.py provider login claude
-python scripts/clishare.py provider login gemini
+python scripts/cshcli.py lease renew $projectId LEASE_ID FENCE --ttl 120
+python scripts/cshcli.py lease release $projectId LEASE_ID FENCE
+python scripts/cshcli.py events $projectId
 ```
 
-Los comandos de login ejecutan el CLI oficial instalado y dejan que este gestione
-su autenticación. No copian tokens OAuth ni archivos de credenciales. Se necesita
-una versión compatible y el ejecutable en el PATH; en Windows, este adaptador
-requiere un ejecutable nativo, porque los wrappers `.cmd/.bat` no conservan todas
-las garantías de argumentos. Gemini instalado mediante npm suele usar un wrapper;
-en ese caso inicia sesión directamente con su comando oficial y usa su API aquí.
+Default TTL: 120 seconds; range: 1–3600. Renewal is manual in this cut. Fences
+are monotonic and persistent: a former holder cannot renew or release an
+expired or reassigned lease with a stale value.
 
-| `chat --provider` | Credencial local | Estado |
+**Current limit:** a lease is an agreement verified by the coordinator. It does
+not yet intercept writes from external tools, nor does it link the chat with
+an editor agent. The runner and patch validation in the next milestone will
+enforce those leases on code changes.
+
+## AI accounts and API keys
+
+The CSHCLI identity and the AI accounts are independent. The coordinator does
+not receive provider keys; calls are made from the local CLI.
+
+```powershell
+python scripts/cshcli.py provider status
+python scripts/cshcli.py provider login codex
+python scripts/cshcli.py provider login claude
+python scripts/cshcli.py provider login gemini
+```
+
+The login commands execute the installed official CLI and let it manage its own
+authentication. They do not copy OAuth tokens or credential files. You need a
+compatible version and the binary in your PATH; on Windows this adapter
+requires a native binary, because `.cmd/.bat` wrappers do not preserve all
+argument guarantees. Gemini installed via npm typically uses a wrapper; in that
+case, sign in directly with its official command and use its API here.
+
+| `chat --provider` | Local credential | Status |
 | --- | --- | --- |
-| `openai` | `OPENAI_API_KEY` | API Responses, modelo explícito |
-| `anthropic` | `ANTHROPIC_API_KEY` | API Messages, modelo explícito |
-| `google` | `GEMINI_API_KEY` | API generateContent, modelo explícito |
-| `codex` | Autenticación del CLI oficial | Texto con sandbox read-only y opciones verificadas |
-| `claude-code` | Autenticación del CLI oficial | Texto con herramientas desactivadas y opciones verificadas |
-| `gemini-cli` | Autenticación del CLI oficial | Chat bloqueado hasta disponer de aislamiento verificable |
+| `openai` | `OPENAI_API_KEY` | Responses API, explicit model |
+| `anthropic` | `ANTHROPIC_API_KEY` | Messages API, explicit model |
+| `google` | `GEMINI_API_KEY` | generateContent API, explicit model |
+| `codex` | Official CLI auth | Text with read-only sandbox and verified flags |
+| `claude-code` | Official CLI auth | Text with tools disabled and verified flags |
+| `gemini-cli` | Official CLI auth | Chat blocked until verifiable isolation is available |
 
 ```powershell
-$env:CLISHARE_MODEL = "identificador-del-modelo"
-python scripts/clishare.py chat --provider openai --model $env:CLISHARE_MODEL "Explica este diseño"
-python scripts/clishare.py chat --provider codex "Propón un plan de migración"
-python scripts/clishare.py chat --provider claude-code "Revisa esta decisión de arquitectura"
+$env:CSHCLI_MODEL = "model-identifier"
+python scripts/cshcli.py chat --provider openai --model $env:CSHCLI_MODEL "Explain this design"
+python scripts/cshcli.py chat --provider codex "Propose a migration plan"
+python scripts/cshcli.py chat --provider claude-code "Review this architecture decision"
 ```
 
-El chat actual recibe texto, no adjunta ni recorre el repositorio. Los CLIs de
-cuentas ejecutan el chat desde una carpeta temporal vacía. Si faltan los flags
-necesarios, el adaptador devuelve un error. Las políticas administradas del CLI
-oficial siguen aplicándose; el wrapper no es un sandbox universal.
+The current chat accepts text only; it does not attach or traverse the
+repository. The official account CLIs run the chat from an empty temporary
+folder. If the required flags are missing, the adapter returns an error. The
+official CLI's managed policies still apply; the wrapper is not a universal
+sandbox.
 
-Las variables API de CLIShare y `CLISHARE_*` se eliminan del entorno de los
-subprocesos oficiales. El método de autenticación y la facturación de esos CLIs
-siguen dependiendo de su configuración oficial. Una suscripción y una API key
-pueden tener cuotas y facturación distintas. CLIShare no cambia automáticamente
-de proveedor ni de modalidad de pago tras un error.
+CSHCLI API variables and `CSHCLI_*` are stripped from the subprocess
+environment. Authentication and billing for those CLIs still depend on their
+official configuration. A subscription and an API key may have different quotas
+and billing. CSHCLI does not silently switch provider or billing mode after
+an error.
 
-OpenAI también documenta una ruta oficial de
-[Sign in with ChatGPT](https://developers.openai.com/siwc/quickstart).
-Su integración directa se evaluará con un cliente propio y su elegibilidad:
-el repositorio privado no concede acceso automáticamente. Claude Code y Gemini CLI
-conservan sus propios flujos de login; el roadmap recoge las restricciones de
-cada proveedor y las fuentes oficiales.
+OpenAI also documents an official
+[Sign in with ChatGPT](https://developers.openai.com/siwc/quickstart) path.
+Direct integration will be evaluated with a dedicated client and its
+eligibility: the private repository does not grant automatic access. Claude
+Code and Gemini CLI keep their own login flows; the roadmap records the
+restrictions of each provider and the official sources.
 
-`.env.example` solo documenta variables: el CLI no carga `.env` automáticamente.
-No pongas secretos en prompts, memoria, eventos o archivos versionados. Los errores
-de proveedores omiten cuerpos remotos y stderr para no revelar credenciales.
+`.env.example` only documents variables: the CLI does not load `.env`
+automatically. Do not put secrets in prompts, memory, events, or versioned
+files. Provider errors omit remote bodies and stderr to avoid leaking
+credentials.
 
-## Coordinar despliegues
+## Coordinate deployments
 
 ```powershell
-python scripts/clishare.py deploy reserve $projectId staging --agent ana-release --ttl 120
+python scripts/cshcli.py deploy reserve $projectId staging --agent ana-release --ttl 120
 ```
 
-Solo el propietario puede reservar `deploy:staging`; un segundo intento al mismo
-entorno falla mientras la reserva siga activa. Se renueva y libera con `lease`.
-**Este comando reserva el entorno; no despliega.** El plan incluye cola persistente,
-SHA y digest exactos, idempotencia, comprobaciones, publicación, health checks,
-reconciliación tras fallos y rollback.
+Only the owner can reserve `deploy:staging`; a second attempt on the same
+environment fails while the lease is still active. Renew and release it with
+`lease`. **This command reserves the environment; it does not deploy.** The
+plan covers a persistent queue, exact SHA and digest, idempotency, checks,
+publishing, health checks, reconciliation after failures, and rollback.
 
-## Verificación
+## Verification
 
 ```powershell
 $env:PYTHONPATH = "src"
 python -m unittest discover -s tests -v
 python -m compileall -q src tests scripts
-python scripts/clishare.py --help
+python scripts/cshcli.py --help
 ```
 
-Las pruebas usan SQLite real, HTTP local y fixtures de proveedores. Las carreras
-sincronizadas hacen competir a once agentes de dos personas por un mismo recurso,
-una versión de memoria y una invitación. Comprueban permisos, expiración,
-fencing persistente, rutas, lotes atómicos y ausencia de secretos en auditoría.
-Las pruebas de proveedores no hacen llamadas de pago ni verifican logins reales.
+The tests use real SQLite, local HTTP, and provider fixtures. The synchronised
+races pit eleven agents from two people against the same resource, memory
+version, and invitation. They check permissions, expiration, persistent
+fencing, paths, atomic batches, and the absence of secrets in audit logs.
+Provider tests do not make paid calls or verify real logins.
 
-La [plantilla de GitHub Actions](templates/ci.yml.example) ejecutará la suite
-en Windows y Linux con Python 3.11, 3.12 y 3.13 cuando se active como
-`.github/workflows/ci.yml`. La credencial usada para la primera subida no permite
-publicar workflows; CI queda pendiente de activación con el permiso correspondiente.
+The [GitHub Actions template](templates/ci.yml.example) will run the suite on
+Windows and Linux with Python 3.11, 3.12, and 3.13 once it is activated as
+`.github/workflows/ci.yml`. The credential used for the first push cannot
+publish workflows; CI remains pending activation with the required permission.
 
-## Siguientes entregas
+## Next deliveries
 
-1. Servicio remoto con HTTPS, cuentas verificadas, rotación de tokens y revocación de miembros.
-2. Runner por tarea con worktrees, heartbeat, herramientas mediadas y control de rutas/symlinks.
-3. Tareas y límites por persona/proveedor, memoria con evidencias y cola de integración sobre SHA.
-4. Pipeline de despliegue por entorno con artefactos verificables y rollback.
-5. OAuth propio elegible, streaming, métricas de coste, empaquetado y distribución.
+1. Remote service with HTTPS, verified accounts, token rotation, and member revocation.
+2. Per-task runner with worktrees, heartbeat, mediated tools, and path/symlink control.
+3. Tasks and quotas per person/provider, evidence-backed memory, and integration queue over SHA.
+4. Per-environment deployment pipeline with verifiable artefacts and rollback.
+5. Eligible native OAuth, streaming, cost metrics, packaging, and distribution.
 
-El plan desarrolla cada entrega con contratos, pruebas y condiciones de cierre.
+The plan develops each delivery with contracts, tests, and closure conditions.
