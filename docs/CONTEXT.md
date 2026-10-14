@@ -170,17 +170,27 @@ se mergeó limpio y el commit `2710daf` salió con el relay privado.
 **Lo que hay que hacer tú, y no se puede hacer desde un token de API.**
 Cambiar el correo principal de la cuenta requiere el ámbito `user:email`, que
 el token de `gh` de este equipo no tiene: `GET user/emails` responde, pero
-`PATCH` y `POST` devuelven 404. En la interfaz web:
+`PATCH` y `POST` devuelven 404. La noreply
+`jtpydk5gyh-alt@users.noreply.github.com` tampoco se puede añadir por API,
+porque GitHub ya la usa de forma implícita.
 
-1. Ajustes → correos.
-2. Añade una dirección que controles y verifícala.
-3. Ponla como principal.
-4. Borra el relay privado, o al menos pásalo a visibilidad privada.
+**Lo que sí funcionó: poner el relay en privado.** No hace falta cambiar el
+correo principal. Con `visibility: private`, GitHub deja de usarlo para
+atribuir merges y recurre a la noreply. Comprobado con el PR `#39`:
+mergeado por squash **sin** `--admin`, el commit salió con
+`291778318+jtpydk5gyh-alt@users.noreply.github.com` y la dirección privada
+no volvió a `main`. El PR `#38`, fusionado con el relay todavía público, sí
+la había colado.
 
-Hasta que eso ocurra, cada squash reintroduce la dirección y hay que volver
-a ejecutar `python scripts/push_rewritten_main.py`. La noreply
-`jtpydk5gyh-alt@users.noreply.github.com` no se puede añadir por API: GitHub
-rechaza registrarla como correo normal porque ya la usa de forma implícita.
+**Un segundo bloqueo, independiente del anterior.** `main` tenía dos
+rulesets que exigían lo mismo, cambios mediante pull request. El segundo,
+`main-owner-merge`, con una regla `update` y un bypass de tipo
+`RepositoryRole`, rechazaba todos los merges con *"base branch policy
+prohibits the merge"*. Los dos se crearon trece segundos después del último
+merge, así que el repositorio llevaba rato sin poder fusionar nada por vía
+normal. `main-integrity` ya exige pull request, `required_status_checks` con
+`Personal data guard`, no.fast-forward y no borrado: `main-owner-merge` era
+redundante y solo estorbaba. Se ha eliminado, y el helper ya no lo recrea.
 
 **Lo que sí se hizo desde el repositorio.** El ruleset `main-integrity`
 exige ahora el control `Personal data guard` con

@@ -17,6 +17,7 @@ def load_helper():
 
 
 helper = load_helper()
+_real_gh = helper.gh
 
 
 class RewriteHelperTests(unittest.TestCase):
@@ -76,6 +77,21 @@ class RewriteHelperTests(unittest.TestCase):
         self.assertEqual(len(pull), 1)
         self.assertFalse(
             pull[0]["parameters"]["require_extra_approval_for_unattributed_changes"])
+
+    def test_only_one_ruleset_is_recreated(self):
+        """A duplicate update ruleset blocked every merge; do not bring it back."""
+        calls = []
+        helper.gh = lambda *arguments, input_text=None: calls.append(
+            (arguments, input_text)) or type("R", (), {"stdout": "", "returncode": 0})()
+        try:
+            helper.restore_protection()
+        finally:
+            helper.gh = _real_gh
+
+        self.assertEqual(len(calls), 1)
+        payload = calls[0][1]
+        self.assertIn("main-integrity", payload)
+        self.assertNotIn("main-owner-merge", payload)
 
     def test_the_private_relay_is_never_written_out_in_full(self):
         """The forbidden address is assembled from pieces, never written whole."""
