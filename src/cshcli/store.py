@@ -116,6 +116,8 @@ CREATE TABLE IF NOT EXISTS run_settlements (
 """
 
 
+SCHEMA_VERSION = 3
+
 _MEMORY_COLUMNS = (
     ("kind", "TEXT"),
     ("scope", "TEXT"),
@@ -296,10 +298,24 @@ class Store:
             try:
                 _migrate_memory_columns(connection)
                 _migrate_reservation_states(connection)
+                connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
                 connection.commit()
             except BaseException:
                 connection.rollback()
                 raise
+
+    def ping(self) -> bool:
+        try:
+            with self._connection() as connection:
+                row = connection.execute("PRAGMA quick_check").fetchone()
+        except Exception:
+            return False
+        return bool(row and row[0] == "ok")
+
+    def schema_version(self) -> int:
+        with self._connection() as connection:
+            row = connection.execute("PRAGMA user_version").fetchone()
+        return int(row[0]) if row else 0
 
     @contextmanager
     def _connection(self, write=False):

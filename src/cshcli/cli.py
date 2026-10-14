@@ -82,6 +82,46 @@ def parser():
     chat.add_argument("--provider", choices=["openai", "anthropic", "google", "minimax", "codex", "claude-code", "gemini-cli"], required=True)
     chat.add_argument("--model", help="Modelo explícito obligatorio para API keys")
     chat.add_argument("prompt")
+
+    context = commands.add_parser("context", help="Manifiesto de contexto acotado para una ejecución")
+    context.add_argument("project")
+    context.add_argument("--task", required=True, help="Identificador de la tarea")
+    context.add_argument("--base-sha", required=True, help="SHA base de 40 caracteres sobre el que se trabaja")
+    context.add_argument("--budget", type=int, default=65536, help="Presupuesto de bytes; 0 produce un manifiesto vacío")
+    context.add_argument("--after-revision", type=int)
+
+    run = commands.add_parser("run", help="Reservas de ejecución con límites y liquidación")
+    run_commands = run.add_subparsers(dest="action", required=True)
+    run_reserve = run_commands.add_parser("reserve", help="Reservar una ejecución dentro de los límites")
+    run_reserve.add_argument("project")
+    run_reserve.add_argument("run_id")
+    run_reserve.add_argument("--generation", type=int, default=1)
+    run_reserve.add_argument("--max-agents", type=int, default=11)
+    run_reserve.add_argument("--max-runtime-seconds", type=int)
+    run_reserve.add_argument("--allow-unknown-cost", action="store_true")
+    run_active = run_commands.add_parser("list", help="Ejecuciones activas que consumen el techo")
+    run_active.add_argument("project")
+    run_settle = run_commands.add_parser("settle", help="Liquidar el uso medido de una ejecución")
+    run_settle.add_argument("project")
+    run_settle.add_argument("run_id")
+    run_settle.add_argument("attempt_id")
+    run_settle.add_argument("--inference-calls", type=int, default=0)
+    run_settle.add_argument("--capture-bytes", type=int)
+    run_settle.add_argument("--runtime-seconds")
+    run_settle.add_argument("--cost", help="Coste real; si se omite se registra como desconocido")
+
+    patch = commands.add_parser("patch", help="Puerta de publicación: decide si un parche puede integrarse")
+    patch_commands = patch.add_subparsers(dest="action", required=True)
+    patch_accept = patch_commands.add_parser("accept", help="Publicar un parche verificando fences vivos")
+    patch_accept.add_argument("project")
+    patch_accept.add_argument("run_id")
+    patch_accept.add_argument("--base-sha", required=True)
+    patch_accept.add_argument("--commit-sha", required=True)
+    patch_accept.add_argument("--generation", type=int, default=1)
+    patch_accept.add_argument("--lease", action="append", required=True, metavar="RESOURCE=FENCE")
+    patch_list = patch_commands.add_parser("list", help="Parches aceptados del proyecto")
+    patch_list.add_argument("project")
+    patch_list.add_argument("--limit", type=int, default=10)
     return root
 
 
@@ -147,10 +187,55 @@ def execute(args):
             result = client.request("DELETE", f"{path}/{args.lease_id}", {"fence": args.fence})
     elif args.command == "deploy":
         result = client.request("POST", f"/v1/projects/{args.project}/leases", {"agent_id": args.agent, "resources": ["deploy:" + args.environment], "ttl": args.ttl})
+    elif args.command == "context":
+        payload = {"task_id": args.task, "base_sha": args.base_sha, "context_budget_bytes": args.budget}
+        if args.after_revision is not None:
+            payload["after_revision"] = args.after_revision
+        result = client.request("POST", f"/v1/projects/{args.project}/context", payload)
+    elif args.command == "run":
+        result = _run(client, args)
+    elif args.command == "patch":
+        result = _patch(client, args)
     else:
         result = client.request("GET", f"/v1/projects/{args.project}/events")
     emit(result)
     return 0
+
+
+def _run(client, args):
+    base = f"/v1/projects/{args.project}"
+    if args.action == "reserve":
+        limits = {"max_agents": args.max_agents, "allow_unknown_cost": bool(args.allow_unknown_cost)}
+        if args.max_runtime_seconds is not None:
+            limits["max_runtime_seconds"] = args.max_runtime_seconds
+        return client.request("POST", f"{base}/runs",
+                              {"run_id": args.run_id, "authorization_generation": args.generation,
+                               "limits": limits})
+    if args.action == "list":
+        return client.request("GET", f"{base}/runs")
+    usage = {"inference_calls": args.inference_calls,
+             "capture_bytes": args.capture_bytes, "runtime_seconds": args.runtime_seconds}
+    usage["cost"] = args.cost if args.cost is not None else None
+    return client.request("POST", f"{base}/runs/settle",
+                          {"run_id": args.run_id, "attempt_id": args.attempt_id,
+                           "measured_usage": usage})
+
+
+def _patch(client, args):
+    base = f"/v1/projects/{args.project}"
+    if args.action == "list":
+        return client.request("GET", f"{base}/patches?limit={args.limit}")
+    fences = {}
+    for entry in args.lease:
+        resource, separator, fence = entry.rpartition("=")
+        if not separator or not resource or not fence.isdigit():
+            raise DomainError(400, "invalid_lease_fence",
+                              f"Usa RESOURCE=FENCE en --lease; recibido: {entry}")
+        fences[resource] = int(fence)
+    return client.request("POST", f"{base}/patches/accept",
+                          {"run_id": args.run_id, "authorization_generation": args.generation,
+                           "lease_fences": fences, "base_sha": args.base_sha,
+                           "commit_sha": args.commit_sha})
 
 
 def main(argv=None):
