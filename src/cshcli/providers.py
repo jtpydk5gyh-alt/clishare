@@ -12,11 +12,13 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from .errors import DomainError
 
-_API_KEYS = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "google": "GEMINI_API_KEY"}
+_API_KEYS = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY",
+             "google": "GEMINI_API_KEY", "minimax": "MINIMAX_API_KEY"}
 _BINARIES = {"codex": "codex", "claude-code": "claude", "gemini-cli": "gemini"}
 _API_TIMEOUT = 60
 _CLI_TIMEOUT = 300
 _MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+_MINIMAX_BASE = "https://api.minimax.io/v1"
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -142,7 +144,7 @@ def _api_chat(provider: str, model: str, prompt: str, key: str) -> str:
         if response.get("stop_reason") != "end_turn":
             raise DomainError(502, "provider_response_incomplete", "El proveedor no completó una respuesta de texto.")
         text = _text(_list(response.get("content")), "text")
-    else:
+    elif provider == "google":
         model_name = model.removeprefix("models/")
         response = _request("https://generativelanguage.googleapis.com/v1beta/models/" + quote(model_name, safe="") + ":generateContent",
                             {"contents": [{"role": "user", "parts": [{"text": prompt}]}]},
@@ -153,6 +155,16 @@ def _api_chat(provider: str, model: str, prompt: str, key: str) -> str:
             raise DomainError(502, "provider_response_incomplete", "El proveedor no completó una respuesta de texto.")
         content = candidate.get("content", {})
         text = _text(_list(content.get("parts")) if isinstance(content, dict) else [])
+    else:
+        response = _request(_MINIMAX_BASE + "/chat/completions",
+                            {"model": model, "messages": [{"role": "user", "content": prompt}],
+                             "max_completion_tokens": 4096},
+                            {"Authorization": f"Bearer {key}"})
+        choices = _list(response.get("choices"))
+        choice = choices[0] if choices and isinstance(choices[0], dict) else {}
+        message = choice.get("message", {})
+        text = message.get("content") if isinstance(message, dict) else None
+        text = text if isinstance(text, str) else ""
     if not text.strip():
         raise DomainError(502, "provider_response_empty", "El proveedor no devolvió texto.")
     return text
@@ -240,7 +252,8 @@ _CAPABILITY_FIELDS = (
 )
 _API_ENDPOINTS = {"openai": "https://api.openai.com/v1/responses",
                   "anthropic": "https://api.anthropic.com/v1/messages",
-                  "google": "https://generativelanguage.googleapis.com/v1beta/models"}
+                  "google": "https://generativelanguage.googleapis.com/v1beta/models",
+                  "minimax": _MINIMAX_BASE + "/chat/completions"}
 _CLI_FLAG_CANDIDATES = {"codex": ("--sandbox", "--json", "--ephemeral", "--ignore-user-config", "--skip-git-repo-check"),
                         "claude-code": ("--tools", "--disallowedTools", "--safe-mode", "--no-session-persistence", "--output-format"),
                         "gemini-cli": ()}
