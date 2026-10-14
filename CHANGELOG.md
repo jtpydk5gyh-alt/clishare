@@ -34,6 +34,11 @@ once it leaves alpha.
   noreply form.
 
 ### Added
+- Milestone 7: `Identity` issues expiring sessions stored only as HMAC-SHA256
+  hashes, revokes one session without ending the rest, and raises
+  `authorization_generation` so work queued before a revocation cannot act
+  afterwards. The PostgreSQL store, HTTPS deployment and restore drill remain
+  unverified and are listed as pending.
 - Milestone 6C: a mediated `Runner` with `read_file`, `write_file`, `remove`
   and `rename`. Every write validates its lease against the coordinator at the
   moment the bytes move, the runner stops writing when the heartbeat is lost,

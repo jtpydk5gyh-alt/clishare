@@ -121,15 +121,30 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "runner_stopped")
 
     def test_heartbeat_renews_every_tracked_lease(self):
-        runner, coordinator = self.runner(heartbeat_seconds=30)
+        now = [1000.0]
+        coordinator = FakeCoordinator({
+            "lease-1": {"id": "lease-1", "resource": "file:src", "fence": 7},
+        })
+        runner = Runner(coordinator, self.workspace, project_id="p1", run_id="run-1",
+                        heartbeat_seconds=30, clock=lambda: now[0])
+        runner.track("lease-1", 7)
         self.assertFalse(runner.heartbeat_due())
-        runner.clock = lambda: runner._last_beat + 30
+        now[0] += 29
+        self.assertFalse(runner.heartbeat_due())
+        now[0] += 1
         self.assertTrue(runner.heartbeat_due())
         runner.heartbeat()
         self.assertEqual(coordinator.renewed, [("lease-1", 7, 120)])
+        self.assertFalse(runner.heartbeat_due())
 
     def test_a_lost_heartbeat_stops_the_runner(self):
-        runner, coordinator = self.runner()
+        now = [1000.0]
+        coordinator = FakeCoordinator({
+            "lease-1": {"id": "lease-1", "resource": "file:src", "fence": 7},
+        })
+        runner = Runner(coordinator, self.workspace, project_id="p1", run_id="run-1",
+                        clock=lambda: now[0])
+        runner.track("lease-1", 7)
         coordinator.fail_renew = True
         with self.assertRaises(DomainError):
             runner.heartbeat()

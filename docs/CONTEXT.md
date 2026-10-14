@@ -110,7 +110,7 @@ escritura sobre la misma base, porque eso produce `database is locked`.
 | 6A Contexto, política, broker | Completo: `context.py`, `policy.py`, `broker.py`, capacidades |
 | 6B Worktree aislado | Completo: rutas, symlinks y junctions rechazados |
 | 6C Herramientas mediadas y sandbox | **En curso.** `Runner` con escrituras mediadas, validación de lease inmediata y heartbeat; sin ejecución arbitraria |
-| 7 Servicio remoto y PostgreSQL | Pendiente |
+| 7 Servicio remoto y PostgreSQL | **En curso.** `Identity` con sesiones revocables; falta PostgreSQL real y despliegue HTTPS |
 | 8A Puerta de publicación | Completo: fences, generación, propiedad, caducidad, SHA, Git |
 | 8B DAG y cola de integración | Pendiente |
 | 9 Despliegues con rollback | Pendiente |
@@ -200,6 +200,32 @@ defecto que el plan quiere evitar.
 
 `heartbeat_seconds` por defecto 30 s, `lease_ttl` 120 s, ambos validados como
 enteros en 1..3600. `True` se rechaza: en Python `True` es un `int`.
+
+## 7: sesiones revocables, y lo que sigue sin poder hacerse
+
+El piloto local emite un token permanente por usuario al registrarse. Con un
+coordinador en loopback al que nadie más llega, eso aguanta. En cuanto el
+coordinador responde por una red, no: no hay forma de terminar una sesión
+sin terminar todas, ni de distinguir a un agente revocado de uno que sencillamente
+no volvió.
+
+`Identity` corrige eso. Una sesión es un valor con hash, caducidad y fila que
+se puede borrar. El token se compara por HMAC-SHA256 y **nunca se guarda**.
+`revoke_agent` incrementa `authorization_generation`, de modo que el trabajo
+encolado *antes* de la revocación conserva una autorización que ya no
+coincide cuando por fin intenta actuar: conserva el artefacto y no produce
+efectos nuevos, que es justo lo que pide el plan para un merge en cola o un
+despliegue esperando aprobación.
+
+**Lo que el hito 7 NO puede cerrarse aquí, y no se va a maquillar.** El plan
+es explícito: contra un PostgreSQL real, lanzar once procesos independientes
+sobre `file:src` y `file:src/a.py` y exigir un único ganador, *sin sustituir
+esa prueba por un mock*. También pide HTTPS con la base en red privada, límites
+de peticiones, copias automáticas y **una restauración probada sobre una base
+vacía** antes de invitar a nadie. No hay PostgreSQL en esta máquina, y la
+regla del proyecto es no añadir dependencias de runtime durante el piloto: un
+driver de PostgreSQL sería la primera. Se deja escrito como pendiente en vez
+de entregar una versión que solo funciona con SQLite y diga que cumple.
 
 ## Corrección de autoría por squash — verificada y purgada
 
