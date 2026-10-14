@@ -300,5 +300,5 @@ v1 guarantees transactional coordination decisions for a local coordinator.
 **It does not guarantee exclusion of external writers, agent isolation,
 Git integration, or real serialised deployments.** Those guarantees have
 their own acceptance criteria in the
-[design](superpowers/specs/2026-10-14-clishare-design.md) and the
-[plan](superpowers/plans/2026-10-14-clishare.md).
+[design](superpowers/specs/2026-10-14-cshcli-design.md) and the
+[plan](superpowers/plans/2026-10-14-cshcli.md).

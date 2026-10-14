@@ -1,7 +1,7 @@
-# CLIShare plan
+# CSHCLI plan
 
 The main document is the
-[superpowers product and implementation plan](docs/superpowers/plans/2026-10-14-clishare.md).
+[superpowers product and implementation plan](docs/superpowers/plans/2026-10-14-cshcli.md).
 It is the reference source for building the product; this file makes it easy
 to find from the repository root.
 
@@ -12,8 +12,8 @@ deployments.
 
 | Document | Purpose |
 | --- | --- |
-| [Superplan](docs/superpowers/plans/2026-10-14-clishare.md) | Product, priorities, architecture, phases, contracts, tests, and acceptance |
-| [Design](docs/superpowers/specs/2026-10-14-clishare-design.md) | Architecture decisions and coordination invariants |
+| [Superplan](docs/superpowers/plans/2026-10-14-cshcli.md) | Product, priorities, architecture, phases, contracts, tests, and acceptance |
+| [Design](docs/superpowers/specs/2026-10-14-cshcli-design.md) | Architecture decisions and coordination invariants |
 | [Protocol](docs/PROTOCOL.md) | Exact API for the existing pilot |
 | [Verified status](docs/STATUS.md) | What exists, what has been tested, and what is still proposed |
 | [README](README.md) | How to run the pilot and its current limits |

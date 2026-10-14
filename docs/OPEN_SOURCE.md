@@ -2,14 +2,14 @@
 
 Official repositories were reviewed on 14 October 2026:
 
-| Project | Practice applied to CLIShare |
+| Project | Practice applied to CSHCLI |
 | --- | --- |
 | [VS Code](https://github.com/microsoft/vscode) | State what the repo delivers, document limits, and link plans |
 | [GitHub CLI](https://github.com/cli/cli) | Install, useful example, and contribution guide with reproducible tests |
 | [uv](https://github.com/astral-sh/uv) | Short product definition and commands with observable output |
 | [FastAPI](https://github.com/fastapi/fastapi) | Separate code, tests, and documentation; an "execute and verify" walkthrough |
 
-The existing structure of `src/clishare`, `tests`, and `docs` is enough for
+The existing structure of `src/cshcli`, `tests`, and `docs` is enough for
 this pilot. The README provides a short entry point and `docs/USAGE.md`
 keeps the detailed instructions. `LICENSE`, `CONTRIBUTING.md`, and
 `SECURITY.md` cover licensing, collaboration, and private reports. No extra

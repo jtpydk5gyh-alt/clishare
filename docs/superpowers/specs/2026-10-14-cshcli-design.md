@@ -1,12 +1,12 @@
-# CLIShare: product and architecture design
+# CSHCLI: product and architecture design
 
-Date: 14 October 2026. Repository: `jtpydk5gyh-alt/clishare`. It was created
+Date: 14 October 2026. Repository: `jtpydk5gyh-alt/cshcli`. It was created
 private; the owner has decided to open it under the OSI MIT license. Their
 confirmed development preferences live in `AGENTS.md`.
 
 ## 1. Outcome we are after
 
-CLIShare will be a CLI for working with AI on shared projects. Each person
+CSHCLI will be a CLI for working with AI on shared projects. Each person
 will use their own provider credentials, create a project, invite
 collaborators, and coordinate several agents. Shared memory will preserve
 decisions and context; a coordinator will reserve resources to reduce
@@ -74,8 +74,8 @@ not the same row. Reference: [PostgreSQL explicit locking](https://www.postgresq
 
 ```mermaid
 flowchart LR
-    A[Person A: 5 agents] --> C[CLIShare CLI]
-    B[Person B: 6 agents] --> D[CLIShare CLI]
+    A[Person A: 5 agents] --> C[CSHCLI CLI]
+    B[Person B: 6 agents] --> D[CSHCLI CLI]
     C --> S[Local HTTP coordinator]
     D --> S
     S --> DB[(Local SQLite)]
@@ -122,7 +122,7 @@ invitation.
 
 The remote service will add verified accounts, revocable sessions,
 agents with their own identity, member administration, and recovery.
-CLIShare invitations do not automatically add collaborators to the
+CSHCLI invitations do not automatically add collaborators to the
 private GitHub repository: both permissions are managed separately.
 
 ## 7. Data model
@@ -207,7 +207,7 @@ integration checkout.
 
 ## 11. AI access
 
-CLIShare has two independent authentications: the coordination token and
+CSHCLI has two independent authentications: the coordination token and
 the provider credentials. Sharing a project shares context and work, not a
 subscription or an API key.
 
@@ -284,7 +284,7 @@ GitHub Actions can reinforce serialisation and environment protections:
 We will not assume that `cancel-in-progress: false` creates a durable
 FIFO queue: we will verify the modality and the current limits when
 implementing, including the [May 2026 queue expansion](https://github.blog/changelog/2026-05-07-github-actions-concurrency-groups-now-allow-larger-queues/).
-CLIShare will keep its own deploy log and idempotence.
+CSHCLI will keep its own deploy log and idempotence.
 
 ## 14. Remote service, security, and operations
 
@@ -331,5 +331,5 @@ consumption of a subscription.
 | M7: operations | Budgets, traces, and versioned distribution | Budget cuts new runs; clean install and upgrades proven |
 
 The actionable plan lives in
-[2026-10-14-clishare.md](../plans/2026-10-14-clishare.md). The initial
+[2026-10-14-cshcli.md](../plans/2026-10-14-cshcli.md). The initial
 network contract lives in [PROTOCOL.md](../../PROTOCOL.md).

@@ -1,4 +1,4 @@
-# CLIShare
+# CSHCLI
 
 AI CLI with personal credentials and shared project coordination. The idea: you
 create a project, invite other people, and everyone works with their own agents
@@ -9,8 +9,8 @@ invitations, versioned memory, leases, and text-based AI adapters are already in
 place. The remote multi-user service, the runner that controls writes, automatic
 worktrees, the integration queue, and real deployments are still in the plan.
 
-The [full plan](docs/superpowers/plans/2026-10-14-clishare.md), the
-[design](docs/superpowers/specs/2026-10-14-clishare-design.md), and the
+The [full plan](docs/superpowers/plans/2026-10-14-cshcli.md), the
+[design](docs/superpowers/specs/2026-10-14-cshcli-design.md), and the
 [HTTP protocol](docs/PROTOCOL.md) describe requirements, phases, permissions,
 invariants, risks, and acceptance criteria.
 
@@ -20,12 +20,12 @@ Requirement: Python 3.11 or later. The pilot needs no runtime dependencies. From
 the repository root:
 
 ```powershell
-python scripts/clishare.py --help
-python scripts/clishare.py serve
+python scripts/cshcli.py --help
+python scripts/cshcli.py serve
 ```
 
 The coordinator listens on `http://127.0.0.1:8765` and stores its database in
-`.clishare/coordinator.sqlite3`. That folder is ignored by Git. The server in
+`.cshcli/coordinator.sqlite3`. That folder is ignored by Git. The server in
 this cut only accepts loopback; the remote service phase covers HTTPS, verified
 identity, request limits, and member administration.
 
@@ -34,10 +34,10 @@ To install the command in a virtual environment:
 ```powershell
 python -m venv .venv
 .venv\Scripts\python -m pip install -e .
-.venv\Scripts\clishare --help
+.venv\Scripts\cshcli --help
 ```
 
-On Linux/macOS: `.venv/bin/python -m pip install -e .` and `.venv/bin/clishare`.
+On Linux/macOS: `.venv/bin/python -m pip install -e .` and `.venv/bin/cshcli`.
 Packaging uses setuptools; the first install command may download it.
 
 ## Create a project and invite someone
@@ -45,27 +45,27 @@ Packaging uses setuptools; the first install command may download it.
 Keep the server running in the first terminal. In a second PowerShell:
 
 ```powershell
-$identity = python scripts/clishare.py auth register ana | ConvertFrom-Json
-$env:CLISHARE_TOKEN = $identity.token
-$project = python scripts/clishare.py project create my-project | ConvertFrom-Json
+$identity = python scripts/cshcli.py auth register ana | ConvertFrom-Json
+$env:CSHCLI_TOKEN = $identity.token
+$project = python scripts/cshcli.py project create my-project | ConvertFrom-Json
 $projectId = $project.id
-python scripts/clishare.py project list
-python scripts/clishare.py project invite $projectId --role member --ttl 3600
+python scripts/cshcli.py project list
+python scripts/cshcli.py project invite $projectId --role member --ttl 3600
 ```
 
 The personal registration token is delivered once and only its hash is stored
 in the database. Keep it in a local secure store; this cut has no recovery or
 token rotation. The invitation is also returned once, expires, and can only be
-accepted once. Share it with its recipient over a private channel. CLIShare
+accepted once. Share it with its recipient over a private channel. CSHCLI
 does not send messages or invitations by email automatically.
 
 In another terminal that reaches the same local coordinator:
 
 ```powershell
-$identity = python scripts/clishare.py auth register luis | ConvertFrom-Json
-$env:CLISHARE_TOKEN = $identity.token
-python scripts/clishare.py project join
-python scripts/clishare.py project list
+$identity = python scripts/cshcli.py auth register luis | ConvertFrom-Json
+$env:CSHCLI_TOKEN = $identity.token
+python scripts/cshcli.py project join
+python scripts/cshcli.py project list
 ```
 
 `project join` requests the invitation without showing it. It also accepts
@@ -81,11 +81,11 @@ single machine; cross-machine collaboration needs the remote service phase.
 ## Memory and leases
 
 ```powershell
-python scripts/clishare.py memory put $projectId architecture --content "One worktree per task" --expected-version 0
-python scripts/clishare.py memory list $projectId
-python scripts/clishare.py memory put $projectId architecture --content "One worktree and one branch per task" --expected-version 1
-python scripts/clishare.py lease acquire $projectId ana-1 file:src/auth.py file:tests/test_auth.py --ttl 120
-python scripts/clishare.py lease list $projectId
+python scripts/cshcli.py memory put $projectId architecture --content "One worktree per task" --expected-version 0
+python scripts/cshcli.py memory list $projectId
+python scripts/cshcli.py memory put $projectId architecture --content "One worktree and one branch per task" --expected-version 1
+python scripts/cshcli.py lease acquire $projectId ana-1 file:src/auth.py file:tests/test_auth.py --ttl 120
+python scripts/cshcli.py lease list $projectId
 ```
 
 Each memory entry has an author, a timestamp, and a version. `0` creates an
@@ -105,9 +105,9 @@ The response includes `id`, `fence`, and `expires_at` for each resource. Renew
 before the lease expires and reuse the values from that lease:
 
 ```powershell
-python scripts/clishare.py lease renew $projectId LEASE_ID FENCE --ttl 120
-python scripts/clishare.py lease release $projectId LEASE_ID FENCE
-python scripts/clishare.py events $projectId
+python scripts/cshcli.py lease renew $projectId LEASE_ID FENCE --ttl 120
+python scripts/cshcli.py lease release $projectId LEASE_ID FENCE
+python scripts/cshcli.py events $projectId
 ```
 
 Default TTL: 120 seconds; range: 1–3600. Renewal is manual in this cut. Fences
@@ -121,14 +121,14 @@ enforce those leases on code changes.
 
 ## AI accounts and API keys
 
-The CLIShare identity and the AI accounts are independent. The coordinator does
+The CSHCLI identity and the AI accounts are independent. The coordinator does
 not receive provider keys; calls are made from the local CLI.
 
 ```powershell
-python scripts/clishare.py provider status
-python scripts/clishare.py provider login codex
-python scripts/clishare.py provider login claude
-python scripts/clishare.py provider login gemini
+python scripts/cshcli.py provider status
+python scripts/cshcli.py provider login codex
+python scripts/cshcli.py provider login claude
+python scripts/cshcli.py provider login gemini
 ```
 
 The login commands execute the installed official CLI and let it manage its own
@@ -149,10 +149,10 @@ case, sign in directly with its official command and use its API here.
 
 ```powershell
 # Pick a model available on your account and set the API key only in your shell.
-$env:CLISHARE_MODEL = "model-identifier"
-python scripts/clishare.py chat --provider openai --model $env:CLISHARE_MODEL "Explain this design"
-python scripts/clishare.py chat --provider codex "Propose a migration plan"
-python scripts/clishare.py chat --provider claude-code "Review this architecture decision"
+$env:CSHCLI_MODEL = "model-identifier"
+python scripts/cshcli.py chat --provider openai --model $env:CSHCLI_MODEL "Explain this design"
+python scripts/cshcli.py chat --provider codex "Propose a migration plan"
+python scripts/cshcli.py chat --provider claude-code "Review this architecture decision"
 ```
 
 The current chat accepts text only; it does not attach or traverse the
@@ -161,10 +161,10 @@ folder. If the required flags are missing, the adapter returns an error. The
 official CLI's managed policies still apply; the wrapper is not a universal
 sandbox.
 
-CLIShare API variables and `CLISHARE_*` are stripped from the subprocess
+CSHCLI API variables and `CSHCLI_*` are stripped from the subprocess
 environment. Authentication and billing for those CLIs still depend on their
 official configuration. A subscription and an API key may have different quotas
-and billing. CLIShare does not silently switch provider or billing mode after
+and billing. CSHCLI does not silently switch provider or billing mode after
 an error.
 
 OpenAI also documents an official
@@ -182,7 +182,7 @@ credentials.
 ## Coordinate deployments
 
 ```powershell
-python scripts/clishare.py deploy reserve $projectId staging --agent ana-release --ttl 120
+python scripts/cshcli.py deploy reserve $projectId staging --agent ana-release --ttl 120
 ```
 
 Only the owner can reserve `deploy:staging`; a second attempt on the same
@@ -197,7 +197,7 @@ publishing, health checks, reconciliation after failures, and rollback.
 $env:PYTHONPATH = "src"
 python -m unittest discover -s tests -v
 python -m compileall -q src tests scripts
-python scripts/clishare.py --help
+python scripts/cshcli.py --help
 ```
 
 The tests use real SQLite, local HTTP, and provider fixtures. The synchronised

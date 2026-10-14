@@ -1,7 +1,7 @@
-# Verified status of CLIShare
+# Verified status of CSHCLI
 
 Date: 14 October 2026. Current priority: complete the superplan. The product
-plan lives in [the main document](superpowers/plans/2026-10-14-clishare.md).
+plan lives in [the main document](superpowers/plans/2026-10-14-cshcli.md).
 
 ## Existing base
 
@@ -35,8 +35,8 @@ returned **58 passing tests in 19.719 seconds**. Breakdown: 27 store tests, 22
 provider tests, 5 HTTP tests, and 4 CLI tests. Concurrent tests use eleven
 synchronised threads; they do not yet represent eleven distributed processes.
 
-`python -m compileall -q src tests scripts`, `python scripts/clishare.py --help`,
-and `python scripts/clishare.py --version` were also executed. The package was
+`python -m compileall -q src tests scripts`, `python scripts/cshcli.py --help`,
+and `python scripts/cshcli.py --version` were also executed. The package was
 built locally with setuptools, with no runtime dependencies.
 
 Real AI accounts, quotas, billing, flags against installed official binaries,
@@ -54,7 +54,7 @@ ponytail, minimal code, tests before and after, and commits under their
 identity. They live in `AGENTS.md` (kept locally, excluded from the public
 remote) and in the owner's global instructions.
 
-Confirmed name: `clishare`. The initial request was private; the current
+Confirmed name: `cshcli`. The initial request was private; the current
 decision is to open the project publicly under the OSI MIT license. The
 opening and documentation are prepared through a branch and force-update.
 Personal memory lives in a local path ignored by Git; it is not part of the

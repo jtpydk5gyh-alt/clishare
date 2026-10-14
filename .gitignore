@@ -8,7 +8,7 @@ dist/
 .coverage
 htmlcov/
 .pytest_cache/
-.clishare/
+.cshcli/
 *.sqlite*
 *.db
 .env

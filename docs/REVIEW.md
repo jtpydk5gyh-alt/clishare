@@ -1,6 +1,6 @@
 # Plan and baseline review
 
-Date: 14 October 2026. Scope: the request for a complete CLIShare plan and
+Date: 14 October 2026. Scope: the request for a complete CSHCLI plan and
 the pilot started before prioritising planning.
 
 ## Coverage checks

@@ -82,17 +82,17 @@ These do not block the alpha but shape future work.
   assistance is allowed in code generation but not in authorship.
 - **Funding.** Leave `.github/FUNDING.yml` empty until there is a real
   funding destination.
-- **Citation.** Skip `CITATION.cff`; CLIShare is not academic software.
+- **Citation.** Skip `CITATION.cff`; CSHCLI is not academic software.
 
 ## 4. Anti-patterns to avoid
 
 The audit flagged practices the project must not copy.
 
-- A README that doubles as a marketing brochure. CLIShare's README must
+- A README that doubles as a marketing brochure. CSHCLI's README must
   stay short and link to the rest of the documentation.
 - A long PR template that nobody fills in. The current template has
   three short sections and a verification checklist.
-- A `SECURITY.md` that delegates without a contact path. CLIShare keeps
+- A `SECURITY.md` that delegates without a contact path. CSHCLI keeps
   its own `SECURITY.md` with a private reporting channel.
 - A CHANGELOG that fragments by year and version without an auto-format.
   The project uses a single Keep-a-Changelog file.
@@ -109,6 +109,6 @@ The audit flagged practices the project must not copy.
 - Public documents must remain in English; private owner rules remain
   in the local `AGENTS.md` only.
 - `python -m compileall -q src tests scripts` must succeed.
-- `python scripts/clishare.py --help` must succeed.
+- `python scripts/cshcli.py --help` must succeed.
 - No new runtime dependencies may enter the pilot without a concrete
   need in the superplan.
