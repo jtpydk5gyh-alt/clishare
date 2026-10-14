@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clishare"
+version = "0.1.0"
+description = "AI CLI with personal providers and shared project coordination"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{name = "CLIShare contributors"}]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Programming Language :: Python :: 3",
+]
+
+[project.scripts]
+clishare = "clishare.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
