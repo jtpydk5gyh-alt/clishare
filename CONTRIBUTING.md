@@ -1,13 +1,36 @@
-# Contribuir a CSHCLI
+# Contributing to CSHCLI
 
-El proyecto está en fase de piloto local. Lee el [estado](docs/ESTADO.md) y el
-[plan](PLAN.md) antes de empezar una funcionalidad. Usa una issue para describir
-un bug, discutir una mejora grande o coordinar archivos con otros colaboradores.
-Para un cambio pequeño basta una PR.
+Thank you for your interest in improving CSHCLI. This guide explains how to set
+up the project, what we expect from a change, and how to submit it.
 
-## Preparar y verificar
+CSHCLI is currently a local pilot. Read [STATUS](docs/STATUS.md) for what is
+implemented and verified, and the [superplan](docs/superpowers/plans/2026-10-14-cshcli.md)
+for what is planned. Please do not assume a feature exists because it is
+described in the plan.
 
-Necesitas Git y Python 3.11+. Desde la raíz del checkout:
+## Before you begin
+
+| Requirement | Version |
+| --- | --- |
+| Git | 2.30 or later |
+| Python | 3.11 or later |
+
+CSHCLI has **no runtime dependencies** during the pilot. You do not need an AI
+account, an API key, or any paid call to build or test the project.
+
+Choose the right channel:
+
+- **Report a bug or request a feature** — open an issue. Describe the problem
+  and the outcome you expected, not only the symptom you observed.
+- **Discuss a large improvement** — open an issue before writing code. This
+  avoids work that conflicts with the architecture or with another contributor.
+- **Make a small change** — open a pull request directly.
+
+## Build and test
+
+Run everything from the repository root.
+
+**Windows (PowerShell)**
 
 ```powershell
 $env:PYTHONPATH = "src"
@@ -15,32 +38,87 @@ python -m unittest discover -s tests -v
 python scripts/cshcli.py --help
 ```
 
-En Linux/macOS: `PYTHONPATH=src python -m unittest discover -s tests -v`.
-Ejecuta las pruebas antes y después del cambio. No necesitan credenciales de IA
-ni llamadas de pago. Si falla algo antes, registra el fallo y distingue su causa
-de la modificación propuesta.
+**Linux and macOS**
 
-## Cambios y commits
+```bash
+PYTHONPATH=src python -m unittest discover -s tests -v
+python3 scripts/cshcli.py --help
+```
 
-- Trabaja en una rama y comprueba que nadie esté cambiando los mismos archivos.
-- Usa el mínimo código claro y correcto. Reutiliza lo existente y la biblioteca
-  estándar; evita dependencias, abstracciones y archivos especulativos.
-- No añadas comentarios ni docstrings explicativas al código o a los ejemplos.
-  Documenta decisiones en Markdown.
-- Mantén las validaciones, permisos y pruebas de concurrencia relevantes.
-- Guarda cambios completos en commits pequeños: `fix(memory): reject stale versions`
-  o `docs(readme): simplify the first-run example`. Explica el motivo en el cuerpo
-  si aporta información; no crees commits vacíos ni divisiones artificiales.
-- Conserva tu autoría real. Los agentes del propietario usan su identidad Git
-  verificada; las contribuciones externas conservan la identidad de su autor.
-- No subas claves, tokens, bases de datos ni `.cshcli/private-memory.md`.
+The test suite uses real SQLite databases, a real local HTTP server, and
+provider fixtures. No test makes a paid call. The AI provider tests exercise
+payload construction and error handling against mocks, so they assert the
+contract rather than a live account.
+
+**Run the tests before and after your change.** If something already fails,
+record the failure and establish whether it is pre-existing or caused by your
+change. A pull request that introduces a new failure will not be reviewed.
+
+To run the compilation check locally:
+
+```bash
+python -m compileall -q src tests scripts
+```
+
+## Coding standards
+
+- **Write the smallest correct change.** Reuse existing code and the standard
+  library before adding a dependency or an abstraction.
+- **No explanatory comments or docstrings in code.** Document decisions in
+  Markdown, where reviewers can read them in context. The codebase is held to
+  this rule; new code is held to it too.
+- **Preserve the guarantees.** If your change touches permissions, leases,
+  memory versions, or concurrency, keep the corresponding validation and the
+  tests that prove it. A change that weakens a guarantee is a breaking change
+  even if the suite still passes.
+- **Never commit secrets.** This includes API keys, coordination tokens,
+  databases, and any local-only files excluded by `.gitignore`.
+
+## Commits
+
+Keep commits small, coherent, and buildable. Use a conventional subject:
+
+```text
+fix(memory): reject stale expected versions
+docs(readme): simplify the first-run example
+feat(policy): enforce the concurrency ceiling
+```
+
+Explain the reason in the commit body when it carries information the subject
+cannot. Do not create empty commits and do not split a single logical change
+into artificial steps.
+
+Keep your real authorship. Commits produced by the owner's agents use the
+owner's verified Git identity; external contributions keep the identity of
+their author.
 
 ## Pull requests
 
-Explica el problema, el cambio y las pruebas ejecutadas. Enlaza la issue si existe;
-`Closes #N` puede cerrarla al integrar la PR. Actualiza documentación y protocolo
-si cambian interfaces. El propietario revisa e integra las propuestas; abrir una
-PR no equivale a fusionarla. Las contribuciones se publican bajo [MIT](LICENSE).
+A pull request should explain:
 
-La plantilla de CI está en `docs/templates/ci.yml.example`; su activación sigue
-pendiente del permiso de GitHub para publicar workflows.
+1. **The problem** — what is wrong or missing, and why it matters.
+2. **The change** — what you did, and what you deliberately did not do.
+3. **Verification** — the exact commands you ran and their results.
+
+If the change resolves an issue, reference it with `Closes #N` so GitHub closes
+it automatically when the pull request is merged.
+
+Update the documentation when you change an interface. `docs/PROTOCOL.md` is the
+contract for the HTTP API; `README.md` and `docs/USAGE.md` are the user-facing
+entry points. A behaviour change with no documentation update is incomplete.
+
+The maintainer reviews and integrates proposals. **Opening a pull request is
+not the same as merging it.** All contributions are published under the
+[MIT License](LICENSE).
+
+## Reporting security issues
+
+Do not open a public issue for a vulnerability. Follow
+[SECURITY.md](SECURITY.md) to report privately.
+
+## Continuous integration
+
+The CI workflow template lives at `docs/templates/ci.yml.example`. It is not yet
+active: publishing workflows requires a GitHub permission the project does not
+have. Until it is enabled, [docs/ci.md](docs/ci.md) describes what CI will run
+when it is activated.
