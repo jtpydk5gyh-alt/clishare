@@ -25,11 +25,12 @@ def main() -> int:
     if root.returncode != 0:
         print("install_hooks: ejecuta esto dentro de un repositorio git")
         return 1
-    hooks = Path(root.stdout.strip()) / ".git" / "hooks"
+    repository = Path(root.stdout.strip())
+    hooks = repository / ".git" / "hooks"
     hooks.mkdir(parents=True, exist_ok=True)
     target = hooks / "pre-commit"
     script = HOOK.format(python=sys.executable,
-                         guard=(root.stdout.strip() / "scripts" / "guard_secrets.py").as_posix())
+                         guard=(repository / "scripts" / "guard_secrets.py").as_posix())
     target.write_text(script, encoding="utf-8", newline="\n")
     target.chmod(target.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
     print(f"install_hooks: hook instalado en {target}")
