@@ -1,0 +1,38 @@
+version: 2
+commit-message:
+  prefix: deps
+  separator: ":"
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    interval: monthly
+    groups:
+      pip-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - python
+  - package-ecosystem: github-actions
+    directory: "/"
+    interval: monthly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - major
+          - minor
+          - patch
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - ci
