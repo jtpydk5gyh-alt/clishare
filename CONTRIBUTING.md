@@ -1,4 +1,4 @@
-# Contribuir a CLIShare
+# Contribuir a CSHCLI
 
 El proyecto está en fase de piloto local. Lee el [estado](docs/ESTADO.md) y el
 [plan](PLAN.md) antes de empezar una funcionalidad. Usa una issue para describir
@@ -12,7 +12,7 @@ Necesitas Git y Python 3.11+. Desde la raíz del checkout:
 ```powershell
 $env:PYTHONPATH = "src"
 python -m unittest discover -s tests -v
-python scripts/clishare.py --help
+python scripts/cshcli.py --help
 ```
 
 En Linux/macOS: `PYTHONPATH=src python -m unittest discover -s tests -v`.
@@ -33,7 +33,7 @@ de la modificación propuesta.
   si aporta información; no crees commits vacíos ni divisiones artificiales.
 - Conserva tu autoría real. Los agentes del propietario usan su identidad Git
   verificada; las contribuciones externas conservan la identidad de su autor.
-- No subas claves, tokens, bases de datos ni `.clishare/private-memory.md`.
+- No subas claves, tokens, bases de datos ni `.cshcli/private-memory.md`.
 
 ## Pull requests
 
