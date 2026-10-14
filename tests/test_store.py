@@ -8,8 +8,8 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from pathlib import Path
 
-from clishare.errors import DomainError
-from clishare.store import Store
+from cshcli.errors import DomainError
+from cshcli.store import Store
 
 
 class StoreTests(unittest.TestCase):

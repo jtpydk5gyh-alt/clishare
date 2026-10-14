@@ -6,7 +6,7 @@ import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from clishare.server import make_server
+from cshcli.server import make_server
 
 
 class ServerTests(unittest.TestCase):
@@ -91,7 +91,7 @@ class ServerTests(unittest.TestCase):
             make_server(Path(self.temp.name) / "public.db", host="0.0.0.0", port=0)
 
     def test_large_memory_pages_can_be_read_by_the_cli_client(self):
-        from clishare.client import Client
+        from cshcli.client import Client
 
         token = self.register("large-memory")
         client = Client(self.url, token)
