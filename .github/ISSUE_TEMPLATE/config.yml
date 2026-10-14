@@ -1,0 +1,10 @@
+---
+blank_issues_enabled: false
+contact_links:
+  - name: Security reports
+    url: https://github.com/jtpydk5gyh-alt/clishare/security/advisories/new
+    about: Reporta vulnerabilidades de forma privada; no abras issues públicas.
+  - name: Documentation
+    url: https://github.com/jtpydk5gyh-alt/clishare/blob/main/README.md
+    about: Cómo ejecutar el piloto y sus límites actuales.
+---
