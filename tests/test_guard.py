@@ -33,26 +33,48 @@ class GuardTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
 
+    def repository(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        path = Path(temp.name)
+        subprocess.run(["git", "init", "-q"], cwd=path, check=True,
+                       capture_output=True)
+        subprocess.run(["git", "config", "user.email", guard.ALLOWED_EMAIL],
+                       cwd=path, check=True)
+        subprocess.run(["git", "config", "user.name", "Trankideal"],
+                       cwd=path, check=True)
+        return path
+
+    def run_guard(self, repository, *arguments):
+        environment = dict(os.environ)
+        environment["GIT_CONFIG_GLOBAL"] = str(repository / "gitconfig-global")
+        environment["GIT_CONFIG_SYSTEM"] = str(repository / "gitconfig-system")
+        (repository / "gitconfig-global").write_text("", encoding="utf-8")
+        return subprocess.run([sys.executable, str(SCRIPT), *arguments],
+                              cwd=repository, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace",
+                              env=environment)
+
     def test_the_noreply_address_is_the_only_allowed_email(self):
         self.assertEqual(guard.ALLOWED_EMAIL, "jtpydk5gyh-alt@users.noreply.github.com")
 
     def test_a_personal_email_is_flagged(self):
         name = self.write("doc.md", "contact: ana.lopez@correo-real.net\n")
-        findings = guard.scan([name], "")
+        findings, _ = guard.scan([name], "")
         self.assertTrue(any("correo" in label for _, _, label, _ in findings))
 
     def test_the_private_relay_address_is_flagged_explicitly(self):
         name = self.write("doc.md", "contact: jtpydk5gyh@privaterelay.appleid.com\n")
-        findings = guard.scan([name], "")
+        findings, _ = guard.scan([name], "")
         self.assertTrue(any("privada" in label for _, _, label, _ in findings))
 
     def test_the_noreply_address_is_not_flagged(self):
         name = self.write("doc.md", f"owner: {guard.ALLOWED_EMAIL}\n")
-        self.assertEqual(guard.scan([name], ""), [])
+        self.assertEqual(guard.scan([name], ""), ([], []))
 
     def test_reserved_example_domains_are_allowed(self):
         name = self.write("doc.md", "a@example.com b@example.invalid c@example.org d@remote.example\n")
-        self.assertEqual(guard.scan([name], ""), [])
+        self.assertEqual(guard.scan([name], ""), ([], []))
 
     def test_system_user_paths_are_flagged(self):
         for content in ("path: C:/Users/67gang/Documents\n",
@@ -60,29 +82,29 @@ class GuardTests(unittest.TestCase):
                         "path: /Users/67gang/project\n"):
             with self.subTest(content=content):
                 name = self.write("doc.md", content)
-                findings = guard.scan([name], "")
+                findings, _ = guard.scan([name], "")
                 self.assertTrue(any("ruta" in label for _, _, label, _ in findings))
 
     def test_tokens_and_private_keys_are_flagged(self):
         name = self.write("doc.md",
                           "key sk-abcdefghijklmnopqrstuvwxyz012345\ngh ghp_abcdefghijklmnopqrstuvwxyz012345\n"
                           "-----BEGIN RSA PRIVATE KEY-----\n")
-        labels = [label for _, _, label, _ in guard.scan([name], "")]
+        labels = [label for _, _, label, _ in guard.scan([name], "")[0]]
         self.assertTrue(any("token" in label for label in labels))
         self.assertTrue(any("clave privada" in label for label in labels))
 
     def test_a_clean_file_produces_no_findings(self):
         name = self.write("doc.md", "# Title\n\nNormal prose with no personal data.\n")
-        self.assertEqual(guard.scan([name], ""), [])
+        self.assertEqual(guard.scan([name], ""), ([], []))
 
     def test_the_guard_exempts_only_its_own_test_file(self):
         self.assertEqual(guard.SELF_EXEMPT, {"tests/test_guard.py"})
         exempt = self.write(os.path.join("tests", "test_guard.py"),
                             "contact: jtpydk5gyh@privaterelay.appleid.com\n")
-        self.assertEqual(guard.scan([exempt], ""), [])
+        self.assertEqual(guard.scan([exempt], ""), ([], []))
         other = self.write(os.path.join("tests", "test_other.py"),
                            "contact: jtpydk5gyh@privaterelay.appleid.com\n")
-        self.assertTrue(guard.scan([other], ""))
+        self.assertTrue(guard.scan([other], "")[0])
 
     def test_the_installer_refuses_to_overwrite_an_existing_hook(self):
         installer = Path(__file__).resolve().parents[1] / "scripts" / "install_hooks.py"
@@ -136,7 +158,7 @@ class GuardTests(unittest.TestCase):
     def test_the_report_never_prints_the_detected_value(self):
         secret = "sk-" + "q" * 24
         name = self.write("doc.md", "key " + secret + "\n")
-        findings = guard.scan([name], "")
+        findings, _ = guard.scan([name], "")
         self.assertTrue(findings)
         for _, _, _, sample in findings:
             self.assertNotIn("qqqq", guard.redact_sample(sample))
@@ -187,6 +209,111 @@ class GuardTests(unittest.TestCase):
                 type("R", (), {"stdout": guard.ALLOWED_EMAIL + "\n", "returncode": 0})(),
             ]
             self.assertEqual(guard.identity_findings(), [])
+
+    def test_the_staged_index_is_read_and_not_the_working_tree(self):
+        """The whole point of the guard: scan what git is about to record.
+
+        If it read the working tree, an agent that edits a file after staging
+        it would be judged on text that is never committed, while the staged
+        text reaches the remote unexamined. That is the exact shape of the
+        leak that reached a squash merge.
+        """
+        with tempfile.TemporaryDirectory() as temp:
+            repository = Path(temp)
+            subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+            target = repository / "doc.md"
+            target.write_text("contact: ana@correo-real.net\n", encoding="utf-8")
+            subprocess.run(["git", "add", "doc.md"], cwd=repository, check=True)
+            target.write_text("clean text, nothing personal here\n", encoding="utf-8")
+
+            staged = subprocess.run(["git", "show", ":doc.md"], cwd=repository,
+                                    capture_output=True, text=True, check=True,
+                                    encoding="utf-8")
+            self.assertIn("correo-real.net", staged.stdout)
+
+            result = self.run_guard(repository)
+
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 1, output)
+        self.assertIn("doc.md:1", output)
+
+    def test_a_clean_index_is_not_blocked_by_a_dirty_working_tree(self):
+        """The opposite asymmetry: uncommitted edits must not fail the commit."""
+        with tempfile.TemporaryDirectory() as temp:
+            repository = Path(temp)
+            subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+            subprocess.run(["git", "config", "user.email", guard.ALLOWED_EMAIL],
+                           cwd=repository, check=True)
+            target = repository / "doc.md"
+            target.write_text("clean text, nothing personal here\n", encoding="utf-8")
+            subprocess.run(["git", "add", "doc.md"], cwd=repository, check=True)
+            target.write_text("contact: ana@correo-real.net\n", encoding="utf-8")
+
+            result = self.run_guard(repository)
+
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, output)
+
+    def test_committed_text_builds_a_valid_git_spec(self):
+        """A colon-prefixed revision must not be given a second colon.
+
+        "::name" is rejected by git, and the rejection used to be read as
+        "content unavailable", which sent the guard to the working tree.
+        """
+        built = []
+
+        def capture(command, **keywords):
+            built.append(command)
+            return type("R", (), {"stdout": "", "returncode": 0})()
+
+        with mock.patch.object(guard.subprocess, "run", side_effect=capture):
+            guard.committed_text("doc.md", ":")
+            guard.committed_text("doc.md", "HEAD")
+
+        self.assertEqual(built[0], ["git", "show", ":doc.md"])
+        self.assertEqual(built[1], ["git", "show", "HEAD:doc.md"])
+
+    def test_the_index_is_read_from_a_real_repository(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = Path(temp)
+            subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+            target = repository / "doc.md"
+            target.write_text("content\n", encoding="utf-8")
+            subprocess.run(["git", "add", "doc.md"], cwd=repository, check=True)
+
+            previous = os.getcwd()
+            os.chdir(repository)
+            try:
+                index_text = guard.committed_text("doc.md", ":")
+                head_missing = guard.committed_text("doc.md", "HEAD")
+            finally:
+                os.chdir(previous)
+
+        self.assertEqual(index_text, "content\n")
+        self.assertIsNone(head_missing)
+
+    def test_an_unreadable_index_is_refused_rather_than_substituted(self):
+        """Falling back to the working tree is how the guard failed open."""
+        with tempfile.TemporaryDirectory() as temp:
+            repository = Path(temp)
+            subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+            target = repository / "doc.md"
+            target.write_text("clean text, nothing personal here\n", encoding="utf-8")
+            subprocess.run(["git", "add", "doc.md"], cwd=repository, check=True)
+            target.write_text("contact: ana@correo-real.net\n", encoding="utf-8")
+
+            real_run = subprocess.run
+
+            def refuse_show(command, *arguments, **keywords):
+                if command[:2] == ["git", "show"]:
+                    return type("R", (), {"stdout": "", "returncode": 128,
+                                          "stderr": "", "args": ""})()
+                return real_run(command, *arguments, **keywords)
+
+            with mock.patch.object(guard.subprocess, "run", side_effect=refuse_show):
+                result = guard.main(["doc.md"])
+
+        self.assertEqual(result, 1)
 
 
 if __name__ == "__main__":
