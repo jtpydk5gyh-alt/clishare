@@ -47,7 +47,7 @@ class Client:
                     code, message = "http_error", f"El coordinador respondió HTTP {error.code}."
                 raise DomainError(error.code, code, message) from None
         except (URLError, TimeoutError, OSError):
-            raise DomainError(503, "coordinator_unavailable", "No se pudo conectar al coordinador. Comprueba clishare serve y CLISHARE_URL.") from None
+            raise DomainError(503, "coordinator_unavailable", "No se pudo conectar al coordinador. Comprueba cshcli serve y CSHCLI_URL.") from None
         with response:
             raw = response.read(MAX_RESPONSE + 1)
             if len(raw) > MAX_RESPONSE:

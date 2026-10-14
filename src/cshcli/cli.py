@@ -13,12 +13,12 @@ from .server import make_server
 
 
 def parser():
-    root = argparse.ArgumentParser(prog="clishare", description="IA personal y coordinación compartida de proyectos (piloto local).")
+    root = argparse.ArgumentParser(prog="cshcli", description="IA personal y coordinación compartida de proyectos (piloto local).")
     root.add_argument("--version", action="version", version=__version__)
-    root.add_argument("--url", default=os.environ.get("CLISHARE_URL", "http://127.0.0.1:8765"), help="URL base del coordinador, o CLISHARE_URL")
+    root.add_argument("--url", default=os.environ.get("CSHCLI_URL", "http://127.0.0.1:8765"), help="URL base del coordinador, o CSHCLI_URL")
     commands = root.add_subparsers(dest="command", required=True)
     serve = commands.add_parser("serve", help="Arrancar el coordinador piloto en loopback")
-    serve.add_argument("--db", default=".clishare/coordinator.sqlite3")
+    serve.add_argument("--db", default=".cshcli/coordinator.sqlite3")
     serve.add_argument("--host", choices=["127.0.0.1", "localhost"], default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
     auth = commands.add_parser("auth", help="Identidad local de colaboración")
@@ -92,7 +92,7 @@ def emit(value):
 def execute(args):
     if args.command == "serve":
         server = make_server(Path(args.db), args.host, args.port)
-        print(f"CLIShare piloto local: http://{args.host}:{server.server_port}", file=sys.stderr)
+        print(f"CSHCLI piloto local: http://{args.host}:{server.server_port}", file=sys.stderr)
         print("Las reservas son cooperativas. El runner aislado se implementa en el siguiente hito.", file=sys.stderr)
         try:
             server.serve_forever()
@@ -107,9 +107,9 @@ def execute(args):
     if args.command == "chat":
         print(providers.chat(args.provider, args.model, args.prompt))
         return 0
-    token = os.environ.get("CLISHARE_TOKEN")
+    token = os.environ.get("CSHCLI_TOKEN")
     if not token and args.command != "auth":
-        raise DomainError(401, "authentication_required", "Define CLISHARE_TOKEN con tu token de colaboración.")
+        raise DomainError(401, "authentication_required", "Define CSHCLI_TOKEN con tu token de colaboración.")
     client = Client(args.url, token)
     if args.command == "auth":
         result = client.request("POST", "/v1/users", {"name": args.name})

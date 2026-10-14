@@ -170,7 +170,7 @@ def _text(blocks: list, kind: str | None = None) -> str:
 
 def _cli_environment() -> dict[str, str]:
     return {name: value for name, value in os.environ.items()
-            if name.upper() not in _API_KEYS.values() and not name.upper().startswith("CLISHARE_")}
+            if name.upper() not in _API_KEYS.values() and not name.upper().startswith("CSHCLI_")}
 
 
 def _run_capture(arguments: list[str], *, prompt: str | None = None, timeout: int = _CLI_TIMEOUT,
@@ -206,7 +206,7 @@ def _cli_chat(provider: str, model: str | None, prompt: str) -> str:
         arguments.extend(["--model", model])
     if provider == "codex":
         arguments.append("-")
-    with tempfile.TemporaryDirectory(prefix="clishare-chat-") as working_directory:
+    with tempfile.TemporaryDirectory(prefix="cshcli-chat-") as working_directory:
         output = _run_capture(arguments, prompt=prompt, cwd=working_directory).stdout
     if provider == "claude-code":
         if not output.strip():

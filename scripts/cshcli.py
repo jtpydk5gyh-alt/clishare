@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from clishare.cli import main
+from cshcli.cli import main
 
 if __name__ == "__main__":
     raise SystemExit(main())

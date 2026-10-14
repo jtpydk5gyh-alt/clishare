@@ -19,7 +19,7 @@ class Coordinator(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "CLIShare/0.1"
+    server_version = "CSHCLI/0.1"
     sys_version = ""
 
     def setup(self):
@@ -103,7 +103,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             auth = self.headers.get("Authorization", "")
             if not auth.startswith("Bearer ") or not auth[7:].strip():
-                raise DomainError(401, "authentication_required", "Falta CLISHARE_TOKEN o un bearer válido.")
+                raise DomainError(401, "authentication_required", "Falta CSHCLI_TOKEN o un bearer válido.")
             user = store.authenticate(auth[7:])
             body = self._body() if method in {"POST", "PUT", "DELETE"} else {}
             status, result = self._dispatch(store, user, method, path, body, query)
