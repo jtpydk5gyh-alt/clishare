@@ -1,0 +1,68 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: Project identifier
+        required: true
+        type: string
+      environment:
+        description: Environment name (staging or production)
+        required: true
+        type: string
+      commit_sha:
+        description: Exact 40 character commit to build
+        required: true
+        type: string
+      artifact_digest:
+        description: Immutable artefact digest, sha256:...
+        required: true
+        type: string
+      idempotency_key:
+        description: Key that makes a re-send the same request
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.project }}-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  reserve:
+    name: Reserve the environment
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Identity must be the noreply form
+        run: |
+          git config user.email jtpydk5gyh-alt@users.noreply.github.com
+          git config user.name Trankideal
+      - name: Personal data guard
+        run: python scripts/guard_secrets.py --all
+      - name: Reject a digest that is not explicit
+        env:
+          SHA: ${{ inputs.commit_sha }}
+          DIGEST: ${{ inputs.artifact_digest }}
+        run: |
+          python -c "import os, re, sys; sys.exit(0 if re.fullmatch(r'[0-9a-f]{40}', os.environ['SHA']) else 'the commit SHA must be 40 lowercase hex characters')"
+          python -c "import os, re, sys; sys.exit(0 if re.fullmatch(r'sha256:[0-9a-f]{64}', os.environ['DIGEST']) else 'the artefact digest must be sha256: followed by 64 lowercase hex characters')"
+      - name: Reserve deploy:ENVIRONMENT
+        env:
+          PYTHONPATH: src
+          CSHCLI_URL: ${{ secrets.CSHCLI_URL }}
+          CSHCLI_TOKEN: ${{ secrets.CSHCLI_TOKEN }}
+        run: |
+          python scripts/cshcli.py deploy reserve "${{ inputs.project }}" "${{ inputs.environment }}" --agent deploy-worker --ttl 600
+      - name: Report what this run did not do
+        run: |
+          echo "This run reserved the environment and nothing more."
+          echo "No artefact was published: no deployment HTTP route and no concrete destination are configured."
+          echo "A re-run with the same idempotency key is the same request, not a second deployment."
