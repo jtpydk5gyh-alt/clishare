@@ -1,23 +1,89 @@
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-*.egg-info/
-build/
-dist/
-.coverage
-htmlcov/
-.pytest_cache/
-.cshcli/
-*.sqlite*
-*.db
+root = true
+
+# --- Secrets and local configuration -------------------------------------
+# Real credentials never enter the repository. `.env.example` documents the
+# variable names without any value.
 .env
 .env.*
 !.env.example
 *.pem
 *.key
-_local/
+*.p12
+*.pfx
+*.crt
+*.keystore
+.netrc
+.npmrc
+.pypirc
+credentials.json
+service-account*.json
+
+# --- Owner-private material ----------------------------------------------
+# Working rules, personal memory and scratch directories stay on this machine.
+.cshcli/
 AGENTS.md
-docs/REVISION_PRIVATE.md
-docs/ESTADO_PRIVATE.md
-_workspace/
+_local/
+.worktrees/
+*_PRIVATE.md
+*_private.md
+
+# --- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# --- Build output ---------------------------------------------------------
+build/
+dist/
+sdist/
+*.egg-info/
+*.egg
+.eggs/
+pip-wheel-metadata/
+__pypackages__/
+
+# --- Databases and coordinator state --------------------------------------
+# The pilot coordinator keeps its state here; it must never be committed.
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# --- Caches, editors and operating system noise --------------------------
+.cache/
+node_modules/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Logs and temporary files ---------------------------------------------
+*.log
+*.tmp
+*.bak
+*.orig
+*.rej
+nohup.out

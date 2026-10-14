@@ -24,16 +24,14 @@ plan lives in [the main document](superpowers/plans/2026-10-14-cshcli.md).
 
 Observed environment: Windows, Python 3.12.14 from the Codex runtime. The
 system `python` alias points to WindowsApps and was not available in this
-session; verification used this executable:
-
-```text
-C:\Users\67gang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe
-```
+session. Verification used a standard CPython 3.12 installation; the
+interpreter path is machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests -v`
-returned **58 passing tests in 19.719 seconds**. Breakdown: 27 store tests, 22
-provider tests, 5 HTTP tests, and 4 CLI tests. Concurrent tests use eleven
-synchronised threads; they do not yet represent eleven distributed processes.
+returned **167 passing tests in 77 seconds**, with 2 skipped: the symbolic link
+cases on a host that does not grant the privilege, while the Windows junction
+case runs. Concurrent tests use eleven synchronised threads; they do not yet
+represent eleven distributed processes.
 
 `python -m compileall -q src tests scripts`, `python scripts/cshcli.py --help`,
 and `python scripts/cshcli.py --version` were also executed. The package was
@@ -48,15 +46,14 @@ credential due to the missing `workflow` scope. It is kept as a
 
 ## Rules and decisions
 
-Initially there were no project files or `AGENTS.md` in the inspected folder
-or parent directories. The owner later confirmed their rules: zero comments,
-ponytail, minimal code, tests before and after, and commits under their
-identity. They live in `AGENTS.md` (kept locally, excluded from the public
-remote) and in the owner's global instructions.
+The project started without any existing files. The owner confirmed a set of
+working rules that are kept on their own machine and are **not** part of the
+public distribution: no explanatory comments in code, minimal changes, tests
+run before and after each change, and every commit authored under the owner's
+verified Git identity.
 
 Confirmed name: `cshcli`. The initial request was private; the current
-decision is to open the project publicly under the OSI MIT license. The
-opening and documentation are prepared through a branch and force-update.
+decision is to open the project publicly under the OSI MIT license.
 Personal memory lives in a local path ignored by Git; it is not part of the
 distribution.
 
