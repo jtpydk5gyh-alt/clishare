@@ -558,6 +558,29 @@ class Store:
             raise DomainError(409, "lease_expired", "Lease has expired; acquire a new lease before continuing.")
         return dict(lease)
 
+    def validate_lease(self, user_id, project_id, lease_id, fence, resource=None):
+        """Answers whether a write is authorised right now, and nothing more.
+
+        A runner calls this immediately before touching its workspace. The
+        answer is a moment, not a permission: the lease may expire one
+        second later, and the publication gate checks again for that reason.
+        """
+        with self._connection() as connection:
+            self._authorize(connection, user_id, project_id)
+            lease = self._held_lease(connection, user_id, project_id, lease_id, fence)
+            if resource is not None:
+                covered = _resource(resource)
+                held = lease["resource"]
+                if not (covered == held or covered.startswith(held + "/")
+                        or held.startswith(covered + "/")):
+                    raise DomainError(
+                        409, "resource_not_leased",
+                        f"The lease covers {held}, not {covered}.")
+            return {"id": lease["id"], "project_id": project_id, "agent_id": lease["agent_id"],
+                    "user_id": lease["user_id"], "resource": lease["resource"],
+                    "fence": lease["fence"], "expires_at": lease["expires_at"],
+                    "validated_at": self.clock()}
+
     def renew_lease(self, user_id, project_id, lease_id, fence, ttl=120):
         with self._connection(write=True) as connection:
             self._authorize(connection, user_id, project_id, write=True)

@@ -109,7 +109,7 @@ escritura sobre la misma base, porque eso produce `database is locked`.
 | 1–5 Piloto local | Completo y verificado |
 | 6A Contexto, política, broker | Completo: `context.py`, `policy.py`, `broker.py`, capacidades |
 | 6B Worktree aislado | Completo: rutas, symlinks y junctions rechazados |
-| 6C Herramientas mediadas y sandbox | Pendiente. **Siguiente hito**: es lo único que impide decir que CSHCLI coordina de verdad |
+| 6C Herramientas mediadas y sandbox | **En curso.** `Runner` con escrituras mediadas, validación de lease inmediata y heartbeat; sin ejecución arbitraria |
 | 7 Servicio remoto y PostgreSQL | Pendiente |
 | 8A Puerta de publicación | Completo: fences, generación, propiedad, caducidad, SHA, Git |
 | 8B DAG y cola de integración | Pendiente |
@@ -165,6 +165,41 @@ recordarlo antes de volver a cambiar la configuración de la cuenta.
 4. **Un test de flakiness conocido**: `test_capture_timeout_stops_descendants_while_parent_is_running`
    falla si la máquina está cargada. Pasa aislado. Merece un margen mayor o
    una etiqueta de `slow`.
+
+## 6C: qué es un runner y qué no es
+
+El `Runner` expone una superficie deliberadamente pequeña: `read_file`,
+`write_file`, `remove`, `rename`. **No existe ningún método que ejecute un
+comando, abra un socket o alcance fuera de su worktree.** Esa ausencia es la
+garantía, y hay un test que falla si alguien añade uno con nombre plausible.
+
+Tres reglas, comprobadas:
+
+1. **La autorización es un instante, no un permiso.** `write_file` valida el
+   lease contra el coordinador *inmediatamente antes* de mover los bytes. Un
+   lease validado caduca un segundo después, y por eso la puerta de
+   publicación vuelve a comprobar fences, generación y caducidad. El test
+   `test_publish_after_a_new_generation_is_refused` valida, revoca la
+   generación y exige que la publicación falle igual.
+2. **El workspace resuelve la ruta.** Un runner no puede señalarse al host, a
+   un checkout vecino ni a través de un symlink, porque nunca entrega una
+   ruta a ningún sitio que el workspace no haya resuelto y rechazado antes.
+   `Store.validate_lease` añade la comprobación de cobertura: una escritura a
+   `file:docs` con un lease sobre `file:src` se rechaza antes de tocar disco.
+3. **Un runner parado no escribe.** Perder el heartbeat no es un aviso, termina
+   la ejecución.
+
+**Lo que este runner NO es, y hay que decirlo claro.** No es un contenedor. No
+limita CPU, memoria ni número de procesos, y no desactiva la red. El plan
+sitúa la ejecución arbitraria en un contenedor o VM **Linux** con controles
+verificados, y dice que un runner nativo de Windows o macOS no se anunciará
+como equivalente hasta verificar sus controles. Hasta que ese contenedor
+exista, el runner admite lectura, chat y utilidades de worktree, con esos
+límites. Prometer más de lo que los tests demuestran sería exactamente el
+defecto que el plan quiere evitar.
+
+`heartbeat_seconds` por defecto 30 s, `lease_ttl` 120 s, ambos validados como
+enteros en 1..3600. `True` se rechaza: en Python `True` es un `int`.
 
 ## Corrección de autoría por squash — verificada y purgada
 
