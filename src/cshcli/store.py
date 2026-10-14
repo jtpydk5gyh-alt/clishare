@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS run_reservations (
     project_id TEXT NOT NULL REFERENCES projects(id),
     authorization_generation INTEGER NOT NULL,
     limits_json TEXT NOT NULL,
-    state TEXT NOT NULL CHECK (state IN ('reserved', 'settled')),
+    state TEXT NOT NULL CHECK (state IN ('reserved', 'settled', 'abandoned')),
     created_at REAL NOT NULL,
     PRIMARY KEY (run_id, attempt_id)
 );
@@ -117,6 +117,34 @@ def _migrate_memory_columns(connection):
     for column, definition in _MEMORY_COLUMNS:
         if column not in existing:
             connection.execute(f"ALTER TABLE memory ADD COLUMN {column} {definition}")
+
+
+def _migrate_reservation_states(connection):
+    """Recreate run_reservations so an older pilot database accepts the abandoned state."""
+    table = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'run_reservations'"
+    ).fetchone()
+    if table is None or "abandoned" in table["sql"]:
+        return
+    connection.execute("PRAGMA foreign_keys = OFF")
+    connection.execute("ALTER TABLE run_reservations RENAME TO run_reservations_legacy")
+    connection.execute(
+        "CREATE TABLE run_reservations ("
+        " run_id TEXT NOT NULL,"
+        " attempt_id TEXT NOT NULL,"
+        " user_id TEXT NOT NULL REFERENCES users(id),"
+        " project_id TEXT NOT NULL REFERENCES projects(id),"
+        " authorization_generation INTEGER NOT NULL,"
+        " limits_json TEXT NOT NULL,"
+        " state TEXT NOT NULL CHECK (state IN ('reserved', 'settled', 'abandoned')),"
+        " created_at REAL NOT NULL,"
+        " PRIMARY KEY (run_id, attempt_id))"
+    )
+    connection.execute(
+        "INSERT INTO run_reservations SELECT * FROM run_reservations_legacy"
+    )
+    connection.execute("DROP TABLE run_reservations_legacy")
+    connection.execute("PRAGMA foreign_keys = ON")
 
 
 def _invalid_memory_metadata(message):
@@ -245,6 +273,7 @@ class Store:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 _migrate_memory_columns(connection)
+                _migrate_reservation_states(connection)
                 connection.commit()
             except BaseException:
                 connection.rollback()
