@@ -109,13 +109,49 @@ escritura sobre la misma base, porque eso produce `database is locked`.
 | 1–5 Piloto local | Completo y verificado |
 | 6A Contexto, política, broker | Completo: `context.py`, `policy.py`, `broker.py`, capacidades |
 | 6B Worktree aislado | Completo: rutas, symlinks y junctions rechazados |
-| 6C Herramientas mediadas y sandbox | Pendiente |
+| 6C Herramientas mediadas y sandbox | Pendiente. **Siguiente hito**: es lo único que impide decir que CSHCLI coordina de verdad |
 | 7 Servicio remoto y PostgreSQL | Pendiente |
 | 8A Puerta de publicación | Completo: fences, generación, propiedad, caducidad, SHA, Git |
 | 8B DAG y cola de integración | Pendiente |
 | 9 Despliegues con rollback | Pendiente |
 | 10 OAuth nativo elegible | Pendiente |
 | 11 Presupuestos y observabilidad | Pendiente |
+
+## Gobernanza: quién puede commitear y fusionar
+
+| Quién | Qué puede hacer |
+| --- | --- |
+| `jtpydk5gyh-alt` (único colaborador) | Escribir, abrir PR, fusionar, administrar el repositorio |
+
+Los commits no se empujan a `main`: van en una rama y entran por pull request.
+Lo que gobierna eso es un único ruleset, `main-integrity`:
+
+| Regla | Efecto |
+| --- | --- |
+| `pull_request` | Ningún cambio llega a `main` sin PR |
+| `required_status_checks` | El PR no fusiona si `Personal data guard` no pasa. `strict`, así que además la rama debe estar al día con `main` |
+| `non_fast_forward` | Nadie puede reescribir `main` por la vía normal |
+| `deletion` | `main` no se puede borrar |
+| `bypass_actors: []` | No hay excepción. Ni el owner se salta el control en el botón de fusionar |
+
+**Sobre "aceptar" el PR: no hay aprobación humana que dar.** El ruleset pide
+cero revisores y `require_code_owner_review` está desactivado, así que fusionas
+tu propio PR sin que nadie lo apruebe. `CODEOWNERS` te nombra como único
+revisor, pero sin esa regla activada es documentación, no una puerta. Hoy no
+hay segunda persona mirando el código, y eso es una decisión, no un descuido.
+
+**Lo que sí frena algo aunque tú quieras saltártelo:** el control obligatorio.
+Un PR con un secreto detectado no fusiona ni con `--admin` normal. Si aun así
+llega algo a `main`, el guard no lo borra: un control fallido en CI no
+deshace lo ya publicado. Ahí toca reescribir el historial con
+`python scripts/push_rewritten_main.py`, que suspende los rulesets, reescribe
+la autoría, empuja con `--force-with-lease` y los restaura.
+
+**Trampa conocida en la atribución.** GitHub atribuye un squash al correo
+principal de la cuenta que fusiona, no al autor del commit de la rama. Con un
+relay privado como correo principal público, cada squash lo colaba de nuevo.
+Está en privado y los dos últimos merges salieron limpios, pero conviene
+recordarlo antes de volver a cambiar la configuración de la cuenta.
 
 ## Qué haría yo ahora
 
