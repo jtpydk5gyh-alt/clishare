@@ -1,5 +1,3 @@
-"""Small JSON client; provider credentials never pass through this protocol."""
-
 import json
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
