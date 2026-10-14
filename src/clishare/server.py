@@ -1,5 +1,3 @@
-"""Local pilot coordinator. Public hosting requires the production gateway."""
-
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
@@ -29,7 +27,6 @@ class Handler(BaseHTTPRequestHandler):
         self.connection.settimeout(10)
 
     def log_message(self, format, *args):
-        # Request bodies, bearer tokens, memory and invite tokens stay out of logs.
         pass
 
     def do_GET(self):

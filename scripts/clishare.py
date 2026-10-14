@@ -1,5 +1,3 @@
-"""Run directly from a source checkout without installation."""
-
 from pathlib import Path
 import sys
 

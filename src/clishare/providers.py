@@ -1,14 +1,3 @@
-"""Local, text-only provider adapters. Provider credentials never reach the server.
-
-CLI flags checked against the official references on 2026-10-14. Runtime help
-checks reject installations missing the safety flags rather than weakening them.
-https://learn.chatgpt.com/docs/developer-commands?surface=cli#codex-exec
-https://code.claude.com/docs/en/cli-reference#cli-flags
-https://code.claude.com/docs/en/hooks#disable-or-remove-hooks
-https://geminicli.com/docs/cli/plan-mode/#tool-restrictions
-Gemini's customizable plan policies do not provide a text-only guarantee.
-"""
-
 from __future__ import annotations
 
 import json
@@ -31,7 +20,6 @@ _MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 
 
 class _NoRedirect(HTTPRedirectHandler):
-    """Do not forward personal authentication headers to redirect destinations."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -49,7 +37,6 @@ def _redact(text: str) -> str:
 
 
 def status() -> list[dict]:
-    """Show local configuration presence, never credentials or unverified login claims."""
     rows = [{"provider": provider, "mode": "api-key", "configured": bool(os.environ.get(variable)),
              "environment_variable": variable}
             for provider, variable in _API_KEYS.items()]
@@ -65,15 +52,12 @@ def _executable(binary: str) -> str:
     executable = shutil.which(binary)
     if executable is None:
         raise DomainError(400, "cli_not_installed", f"Instala el CLI oficial {binary} y añádelo al PATH.")
-    # Windows implicitly passes .cmd/.bat through cmd.exe, even with shell=False.
-    # Empty --tools arguments cannot safely rely on batch-wrapper quoting.
     if os.name == "nt" and executable.lower().endswith((".cmd", ".bat")):
         raise DomainError(400, "cli_native_required", f"Usa el ejecutable nativo de {binary}, no un wrapper .cmd/.bat.")
     return executable
 
 
 def login(provider: str) -> int:
-    """Delegate sign-in to the unmodified official CLI, inheriting the terminal."""
     commands = {"codex": ("codex", ["login"]), "claude": ("claude", ["auth", "login"]),
                 "gemini": ("gemini", [])}
     if provider not in commands:
@@ -87,7 +71,6 @@ def login(provider: str) -> int:
 
 
 def chat(provider: str, model: str | None, prompt: str) -> str:
-    """Make one text request. No API response tool calls are ever executed."""
     if provider not in _API_KEYS and provider not in _BINARIES:
         raise DomainError(400, "provider_unknown", "Proveedor no compatible.")
     if not isinstance(prompt, str) or not prompt.strip():
@@ -186,11 +169,6 @@ def _text(blocks: list, kind: str | None = None) -> str:
 
 
 def _cli_environment() -> dict[str, str]:
-    """Keep official CLI auth, excluding CLIShare sessions and direct-API credentials.
-
-    Stored/official credentials still choose subscription or API billing. Sanitizing
-    the environment makes no promise that the CLI has an active subscription.
-    """
     return {name: value for name, value in os.environ.items()
             if name.upper() not in _API_KEYS.values() and not name.upper().startswith("CLISHARE_")}
 
@@ -228,8 +206,6 @@ def _cli_chat(provider: str, model: str | None, prompt: str) -> str:
         arguments.extend(["--model", model])
     if provider == "codex":
         arguments.append("-")
-    # Text chat has no reason to discover project MCP servers, hooks, or files.
-    # Official CLIs retain their own authentication; the empty cwd isolates repo config.
     with tempfile.TemporaryDirectory(prefix="clishare-chat-") as working_directory:
         output = _run_capture(arguments, prompt=prompt, cwd=working_directory).stdout
     if provider == "claude-code":

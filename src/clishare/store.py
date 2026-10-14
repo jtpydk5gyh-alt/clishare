@@ -1,11 +1,3 @@
-"""SQLite coordination for projects, versioned memory and expiring resource leases.
-
-Each operation uses its own connection. Mutations take a SQLite write transaction
-before checking permissions or conflicts, including invitation redemption and CAS.
-Lease TTL is 1..3600 seconds; invitation TTL is 1..604800 seconds (integer only).
-Resource leases are advisory: an executor must check their fence before side effects.
-"""
-
 from contextlib import contextmanager
 import hashlib
 import json
@@ -100,7 +92,6 @@ def _integer(value, field, minimum, maximum):
 
 
 def _resource(value):
-    """Canonicalize identifiers conservatively across Windows and POSIX clients."""
     if not isinstance(value, str) or not value or len(value) > 1024:
         raise DomainError(400, "invalid_resource", "A resource must be a nonempty string of at most 1024 characters.")
     if value.startswith("deploy:"):
@@ -270,7 +261,6 @@ class Store:
             )]
 
     def list_memory_page(self, user_id, project_id, limit=10, after=None):
-        """Return a bounded page after an exclusive, lexicographic memory key."""
         with self._connection() as connection:
             self._authorize(connection, user_id, project_id)
             _integer(limit, "limit", 1, 10)

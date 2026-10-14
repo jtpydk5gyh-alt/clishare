@@ -1,5 +1,3 @@
-"""Behavioral tests for the shared coordination store, using real SQLite files."""
-
 import hashlib
 import json
 import sqlite3

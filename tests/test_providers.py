@@ -1,5 +1,3 @@
-"""Provider boundaries: real request construction, synthetic network/process I/O."""
-
 import io
 import json
 import os

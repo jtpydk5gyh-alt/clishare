@@ -1,5 +1,3 @@
-"""Command line interface for the local collaboration pilot."""
-
 import argparse
 import getpass
 import json
