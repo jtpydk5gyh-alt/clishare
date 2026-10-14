@@ -48,11 +48,16 @@ con la credencial actual por falta del scope `workflow`. Se conserva como
 
 ## Reglas y decisiones
 
-No había archivos de proyecto ni AGENTS.md en la carpeta o en los directorios
-padre inspeccionados. No se dispone aquí de las reglas personales de otras
-conversaciones. Las reglas nuevas y revisables se guardan en
-[AGENTS.md](../AGENTS.md), con su procedencia explícita.
+Inicialmente no había archivos de proyecto ni AGENTS.md en la carpeta o los
+directorios padre inspeccionados. El propietario confirmó después sus reglas:
+cero comentarios, ponytail, código mínimo, pruebas antes/después y commits con
+su identidad. Están en [AGENTS.md](../AGENTS.md) y en sus instrucciones globales.
 
-Nombre confirmado por el propietario: `clishare`. Visibilidad confirmada:
-privada, en su cuenta. No se ha elegido todavía un proveedor de alojamiento
-o destino de producción; el plan ofrece una ruta y criterios para decidirlo.
+Nombre confirmado: `clishare`. La petición inicial fue privado; la decisión
+actual es abrirlo como proyecto público bajo MIT de OSI. La apertura y la
+documentación se preparan mediante una PR. La memoria personal queda en una ruta
+local ignorada por Git; no forma parte de la distribución.
+
+No se ha elegido proveedor de alojamiento o destino de producción. Las pruebas
+de estilo confirmaron cero comentarios/docstrings explicativas y 58 pruebas
+correctas tras retirarlos. No se alteró la lógica del piloto.
