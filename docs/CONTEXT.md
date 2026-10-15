@@ -1,21 +1,45 @@
 # Contexto del proyecto — CSHCLI
 
-Resumen del estado real, verificado contra `origin/main` el 14 de octubre
+Resumen del estado real, verificado contra `origin/main` el 15 de octubre
 de 2026. Este documento reemplaza a la memoria de sesión para que cualquier
-agente pueda orientarse sin releer la conversación. La corrección final del
-historial está documentada al final.
+agente pueda orientarse sin releer la conversación.
+
+## Dónde está el proyecto hoy
+
+**Versión 0.2.0, publicada con checksum.** 46 commits, todos con noreply. 423
+tests verdes, 4 omitidos con su motivo. CI verde en Windows y Linux × Python
+3.11, 3.12 y 3.13. Un solo ruleset, `main-integrity`, con `Personal data
+guard` como control obligatorio.
+
+**Lo cerrado en este tramo, por orden:**
+
+| Hito | Qué aporta |
+| --- | --- |
+| 6C | `Runner` que medie cada escritura y no expone ejecución de comandos |
+| 7 | `Identity` con sesiones revocables; `RemoteStore`, migración y operaciones. **Sin servidor levantado** |
+| 8A | Puerta de publicación: fences, generación, propiedad, caducidad, SHA |
+| 8B | `TaskService` con `claim` atómico e `IntegrationQueue` con compare-and-swap |
+| 9 | Despliegues con idempotencia y rollback; **cerrado** con las cuatro comprobaciones contra un proceso real |
+| 10 | `ProviderAuth` con la puerta de elegibilidad **cerrada a propósito** |
+| 11 | `Usage` y `BudgetPolicy` con `Decimal`. **Cerrada en su parte de uso** |
+
+**El siguiente trabajo está escrito**, no empezado: `docs/PLAN-ONLINE.md`
+cubre hacer que funcione online, simplificar la primera ejecución, documentar el
+comando de instalación y añadir `cshcli update`. Los pasos 1 a 3 se pueden
+hacer aquí; el 4 necesita una máquina.
 
 ## Identidad del repositorio
 
 | Dato | Valor |
 | --- | --- |
 | Repositorio | `jtpydk5gyh-alt/cshcli`, público, licencia MIT |
-| Rama por defecto | `main`, 38 commits, todos con `jtpydk5gyh-alt@users.noreply.github.com` |
-| Módulo Python | `cshcli`, comando `cshcli`, script `scripts/cshcli.py` |
+| Versión | `0.2.0`, con `dist/SHA256SUMS` |
+| Rama por defecto | `main`, 46 commits, todos con la noreply de GitHub |
+| Módulo Python | `cshcli`, 21 módulos, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
-| PRs mergeadas | 28 (`#11`–`#28`, `#30`–`#39`, `#41`, `#43`, `#44`) |
+| PRs mergeadas | 34, sin `--admin`: el control obligatorio se respeta |
 | Pruebas | 423, verdes salvo 4 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
-| CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13; `Personal data guard` obligatorio en `main` |
+| CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
 
@@ -120,31 +144,47 @@ escritura sobre la misma base, porque eso produce `database is locked`.
 | 1–5 Piloto local | Completo y verificado |
 | 6A Contexto, política, broker | Completo: `context.py`, `policy.py`, `broker.py`, capacidades |
 | 6B Worktree aislado | Completo: rutas, symlinks y junctions rechazados |
-| 6C Herramientas mediadas y sandbox | **En curso.** `Runner` con escrituras mediadas, validación de lease inmediata y heartbeat; sin ejecución arbitraria |
-| 7 Servicio remoto y PostgreSQL | **Parcial y declarado.** Driver como extra, `RemoteStore` con bloqueo de fila, migración, compose y OPERATIONS.md. El store se niega a servir mientras diga `unverified` |
+| 6C Herramientas mediadas y sandbox | **Completo.** `Runner` con escrituras mediadas, validación de lease inmediata y heartbeat. **No es un contenedor**: sin límites de CPU, memoria, procesos ni red |
+| 7 Servicio remoto y PostgreSQL | **Parcial y declarado.** Driver como extra, `RemoteStore` con bloqueo de fila, migración, compose y OPERATIONS.md. El store se niega a servir mientras diga `unverified`. **Falta levantarlo**: no hay servidor, ni Docker, ni WSL, ni PostgreSQL |
 | 8A Puerta de publicación | Completo: fences, generación, propiedad, caducidad, SHA, Git |
 | 8B DAG y cola de integración | **Completo.** `TaskService` con estados y `claim` atómico, más `IntegrationQueue` con checkout dedicado y avance condicional |
 | 9 Despliegues con rollback | **Cerrado.** Las cuatro comprobaciones de aceptación se ejecutan contra un proceso separado y un socket HTTP real. **Sin proveedor configurado**: nada se ha publicado |
 | 10 OAuth nativo elegible | **Puerta cerrada.** `ProviderAuth` con PKCE, state de un uso y almacén local, detrás de un registro de revisión **vacío a propósito**. Nadie es elegible |
-| 11 Presupuestos y observabilidad | **Parcial.** `Usage.record` con `Decimal`, presupuestos por periodo, techo de agentes y correlación sin prompts. Falta caos, restore y release firmado |
+| 11 Presupuestos y observabilidad | **Parcial.** `Usage.record` con `Decimal`, presupuestos, techo de agentes y correlación sin prompts. La release con checksums está hecha. **Faltan caos, restore y firma** |
+
+## Lo que queda, y qué de ello se puede hacer aquí
+
+| Pendiente | ¿Se puede hacer en esta máquina? |
+| --- | --- |
+| Paso 1 del plan: `cshcli start` y almacén local de claves | **Sí** |
+| Paso 2: documentar el comando de instalación | **Sí** |
+| Paso 3: `cshcli update` con checksum | **Sí** |
+| Paso 4: `cshcli serve --remote` con HTTPS y PostgreSQL | **No.** Sin servidor |
+| 7: levantar el coordinador remoto y probar concurrencia real | **No.** Sin PostgreSQL |
+| 11: ensayos de caos y restore probada | **Parcial.** El caos local sí; el restore sobre una base real, no |
+| 11: firma de release | **No.** Sin credenciales |
+
+La regla que se viene aplicando: **lo que no se puede comprobar se declara, no
+se maquilla.** Cada fila de esta tabla está también en `docs/STATUS.md`, y las
+que dependen de infraestructura tienen su motivo escrito.
 
 ## Orden de trabajo acordado
 
-Decidido por el propietario el 15 de octubre: **el cierre del 9 va primero, y
-el 10 y el 11 quedan para después.** No porque sean más importantes, sino
-porque cerrar el 9 es trabajo pequeño y deja el superplan mucho más cerca de
-terminado, mientras que el 10 y el 11 son entregas grandes.
+Decisiones del propietario, 15 de octubre, en el orden en que se tomaron:
 
-| Orden | Qué | Nota |
-| --- | --- | --- |
-| 1 | ~~Cerrar el 9~~ **Hecho.** Destino fuera del proceso y las cuatro comprobaciones ejecutadas | Encontró un bug real en el manejo de timeouts |
-| ~~2~~ | ~~Cola de integración del 8B~~ **Hecho.** Checkout dedicado, base recalculada, compare-and-swap |
-| ~~3~~ | ~~Hito 10, OAuth nativo~~ **Hecho.** Puerta cerrada con el registro de revisión vacío |
-| 4 | Hito 11, presupuestos y observabilidad | `Usage.record`, presupuestos por periodo, correlación, caos |
+1. El cierre del 9 iba primero, porque era trabajo pequeño y dejaba el
+   superplan cerca de terminado. **Hecho**, y encontró un bug real en el manejo
+   de timeouts que ningún test contra el objeto en memoria podía ver.
+2. Después, la cola del 8B, el 10 y el 11. **Los tres hechos.**
+3. Un plan escrito **antes** de tocar código, para online, simplicidad y
+   actualización automática. **Escrito** en `docs/PLAN-ONLINE.md`.
+4. Versionar después de un cambio grande. **Hecho**: `0.2.0` con checksum y la
+   copia instalada verificada.
 
-Lo que **no** se puede cerrar aquí, y queda declarado en vez de maquillado:
-el almacenamiento PostgreSQL y el despliegue HTTPS del hito 7. No hay Docker,
-ni WSL, ni PostgreSQL en esta máquina.
+Lo que queda, en orden y con su bloqueo declarado, está en la tabla de arriba.
+Lo único que **no** se puede cerrar aquí es el almacenamiento PostgreSQL y el
+despliegue HTTPS: no hay Docker, ni WSL, ni PostgreSQL en esta máquina, ni
+credenciales para firmar una release.
 
 ## Gobernanza: quién puede commitear y fusionar
 
