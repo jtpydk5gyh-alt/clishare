@@ -35,7 +35,9 @@ says so and the reason is in [OPERATIONS.md](OPERATIONS.md),
 | Cross-machine service | **Not usable.** No server has been run; see [OPERATIONS.md](OPERATIONS.md) |
 | Automatic Git integration | `IntegrationQueue` applies a patch in a dedicated worktree, recomputes the base, runs the checks on the composed result and advances the branch only through a compare-and-swap. **Not wired to HTTP or to the runner yet** |
 | Usage and budgets (11) | `Usage.record` with `Decimal`, currency, price date and unit; unknown costs stay `null` and are excluded from totals rather than zeroed. `authorize_run` never invents an estimate and refuses when usage is incomplete. Audit export states that retention is unconfigured |
-| Chaos, restore and release (11) | Release with checksums is **done**. Chaos drills and a proven restore are **not** |
+| Chaos drills (11) | **Local drills done.** Stopping the coordinator leaves a running task running, not silently finished; a dead agent's lease expires and a second agent takes the resource; the stale holder cannot renew or release the new lease; state written by one process is read by another; an aborted batch leaves nothing behind; a re-run of an interrupted deploy does not repeat the effect |
+| Restore (11) | **Not done.** Needs a real database, so a real restore cannot be proven here |
+| Release (11) | Wheel builds, `SHA256SUMS` written, installed copy verified. **Not signed, not published** |
 | Deployment publish and rollback | Coordination complete, and the four acceptance checks run against a separate process and a real health socket. **No provider is configured and nothing has been published anywhere** |
 | Native direct OAuth | `ProviderAuth` implements PKCE, one-use state, exact loopback redirect and a local store, behind a review registry that is **empty on purpose**. No provider is eligible |
 | Personal data guard | Pre-commit hook and a **required** CI check; refuses personal emails, private relay addresses, user paths and a non-noreply identity. Reads the staged index and fails closed |
@@ -54,7 +56,7 @@ session. Verification used a standard CPython 3.12 installation; the
 interpreter path is machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests -v`
-returned **483 passing tests in 175 seconds**, with 5 skipped: two symbolic link
+returned **492 passing tests in 183 seconds**, with 5 skipped: two symbolic link
 cases on a host that does not grant the privilege, two PostgreSQL cases that
 need a real server which does not exist on this machine, and one POSIX file
 permission case that does not apply on Windows. The Windows junction case runs.

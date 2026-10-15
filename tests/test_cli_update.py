@@ -77,15 +77,22 @@ class CliUpdateTests(unittest.TestCase):
         import hashlib
         payload = b"wheel-bytes"
         digest = hashlib.sha256(payload).hexdigest()
+        expected = Path(self.home) / "update" / "cshcli-0.3.0.whl"
         with mock.patch.object(updater, "newest_remote_version", return_value="v0.3.0"):
             with mock.patch.object(updater, "fetch_checksums",
                                    return_value={"cshcli-0.3.0.whl": digest}):
-                with mock.patch.object(updater, "install") as installer:
-                    installer.return_value = {"installed": "ok"}
-                    code, out, _ = self.run_cli("update", "--apply", return_value="v0.3.0")
+                with mock.patch.object(updater, "download") as download:
+                    def fake_download(url, target):
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_bytes(payload)
+                        return target
+                    download.side_effect = fake_download
+                    with mock.patch.object(updater, "install") as installer:
+                        installer.return_value = {"installed": "ok"}
+                        code, out, _ = self.run_cli("update", "--apply", return_value="v0.3.0")
         self.assertEqual(code, 0)
+        download.assert_called_once()
         installer.assert_called_once()
-        expected = Path(self.home) / "update" / "cshcli-0.3.0.whl"
         self.assertEqual(installer.call_args[0][0], expected)
         self.assertEqual(installer.call_args[0][1], digest)
 

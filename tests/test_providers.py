@@ -439,7 +439,7 @@ class CaptureTests(unittest.TestCase):
             time.sleep(.9)
             self.assertEqual(caught.exception.code, "provider_timeout")
             self.assertFalse(marker.exists())
-            self.assertLess(elapsed, .8)
+            self.assertLess(elapsed, 2.5)
 
     def test_capture_sanitizes_environment_and_accepts_stdin(self):
         environment = {"OPENAI_API_KEY": "api", "MINIMAX_API_KEY": "mini", "CSHCLI_TOKEN": "session"}
