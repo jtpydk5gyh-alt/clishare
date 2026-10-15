@@ -32,7 +32,7 @@ says so and the reason is in [OPERATIONS.md](OPERATIONS.md),
 | Isolated workspace | Per-run git worktree; refuses traversal, symlinks and Windows junctions |
 | Mediated runner (6C) | `Runner` validates the lease immediately before every write, stops on heartbeat loss, and exposes no command execution |
 | Sandbox | **Not a sandbox.** No CPU, memory, process or network limits. Arbitrary execution stays unimplemented by design |
-| Cross-machine service | **Not usable.** No server has been run; see [OPERATIONS.md](OPERATIONS.md) |
+| Cross-machine service | **Not usable.** `cshcli serve --remote` checks the configuration and refuses to start without TLS and a PostgreSQL DSN, but **no server has been run**; see [OPERATIONS.md](OPERATIONS.md) |
 | Automatic Git integration | `IntegrationQueue` applies a patch in a dedicated worktree, recomputes the base, runs the checks on the composed result and advances the branch only through a compare-and-swap. **Not wired to HTTP or to the runner yet** |
 | Usage and budgets (11) | `Usage.record` with `Decimal`, currency, price date and unit; unknown costs stay `null` and are excluded from totals rather than zeroed. `authorize_run` never invents an estimate and refuses when usage is incomplete. Audit export states that retention is unconfigured |
 | Chaos drills (11) | **Local drills done.** Stopping the coordinator leaves a running task running, not silently finished; a dead agent's lease expires and a second agent takes the resource; the stale holder cannot renew or release the new lease; state written by one process is read by another; an aborted batch leaves nothing behind; a re-run of an interrupted deploy does not repeat the effect |
