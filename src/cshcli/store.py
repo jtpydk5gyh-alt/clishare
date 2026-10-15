@@ -139,10 +139,56 @@ CREATE TABLE IF NOT EXISTS task_dependencies (
     depends_on TEXT NOT NULL REFERENCES tasks(id),
     PRIMARY KEY (task_id, depends_on)
 );
+CREATE TABLE IF NOT EXISTS deployments (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    environment TEXT NOT NULL,
+    actor_id TEXT NOT NULL REFERENCES users(id),
+    commit_sha TEXT NOT NULL,
+    artifact_digest TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    request_fingerprint TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('queued', 'awaiting_approval', 'running', 'reconciling', 'unknown', 'healthy', 'failed', 'rolled_back')),
+    checks_sha TEXT,
+    policy_revision TEXT NOT NULL,
+    authorization_generation INTEGER NOT NULL,
+    approved_by TEXT REFERENCES users(id),
+    approved_at REAL,
+    external_id TEXT,
+    previous_digest TEXT,
+    previous_deployment_id TEXT,
+    lease_id TEXT,
+    lease_fence INTEGER,
+    environment_generation INTEGER NOT NULL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE (project_id, environment, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS deployments_queue ON deployments(project_id, environment, state, created_at);
+CREATE TABLE IF NOT EXISTS deployment_approvals (
+    deployment_id TEXT PRIMARY KEY REFERENCES deployments(id),
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    environment TEXT NOT NULL,
+    commit_sha TEXT NOT NULL,
+    artifact_digest TEXT NOT NULL,
+    policy_revision TEXT NOT NULL,
+    approver_id TEXT NOT NULL REFERENCES users(id),
+    fingerprint TEXT NOT NULL,
+    approved_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS deployment_environments (
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    environment TEXT NOT NULL,
+    active_deployment_id TEXT,
+    active_digest TEXT,
+    generation INTEGER NOT NULL,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY (project_id, environment)
+);
 """
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 _MEMORY_COLUMNS = (
     ("kind", "TEXT"),

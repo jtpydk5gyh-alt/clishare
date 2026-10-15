@@ -34,6 +34,20 @@ once it leaves alpha.
   noreply form.
 
 ### Added
+- Milestone 9: `DeployService` and `DeployWorker`. An idempotency key scoped to
+  project and environment, enforced by a database constraint rather than a
+  Python check, returns the same deployment for the same payload and `409` for a
+  different one. Approval binds the project, environment, commit SHA, artefact
+  digest and policy revision. Permission, authorization generation, checks SHA,
+  digest and approval are verified twice: before moving to `running` and again
+  immediately before the external effect.
+- An ambiguous timeout moves to `reconciling` and asks the destination what it
+  serves rather than retrying. A destination that cannot answer stays `unknown`
+  and stops promotions for that environment. Rollback is conditioned on the
+  active deployment, the expected digest and the environment generation, so a
+  late rollback cannot undo a newer healthy deployment.
+- **No deployment destination is configured and nothing has been published.**
+  `deploy reserve` remains a reservation.
 - Milestone 7 continued: `RemoteStore` for PostgreSQL, with acquisition
   serialised by `SELECT ... FOR UPDATE` on the project row and fences from a
   persistent sequence. It **refuses to serve traffic while unverified**, and

@@ -10,11 +10,11 @@ historial está documentada al final.
 | Dato | Valor |
 | --- | --- |
 | Repositorio | `jtpydk5gyh-alt/cshcli`, público, licencia MIT |
-| Rama por defecto | `main`, 32 commits, todos con `jtpydk5gyh-alt@users.noreply.github.com` |
+| Rama por defecto | `main`, 38 commits, todos con `jtpydk5gyh-alt@users.noreply.github.com` |
 | Módulo Python | `cshcli`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
-| PRs mergeadas | 27 (`#11`–`#28`, `#30`–`#38`) |
-| Pruebas | 241, todas verdes salvo 2 omitidas por falta de privilegio de symlink |
+| PRs mergeadas | 28 (`#11`–`#28`, `#30`–`#39`, `#41`, `#43`, `#44`) |
+| Pruebas | 350, verdes salvo 4 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13; `Personal data guard` obligatorio en `main` |
 
 ## Qué es y qué no es
@@ -124,7 +124,7 @@ escritura sobre la misma base, porque eso produce `database is locked`.
 | 7 Servicio remoto y PostgreSQL | **Parcial y declarado.** Driver como extra, `RemoteStore` con bloqueo de fila, migración, compose y OPERATIONS.md. El store se niega a servir mientras diga `unverified` |
 | 8A Puerta de publicación | Completo: fences, generación, propiedad, caducidad, SHA, Git |
 | 8B DAG y cola de integración | **En curso.** `TaskService` con estados, ciclos y `claim` atómico; falta la cola que aplica parches en un checkout |
-| 9 Despliegues con rollback | Pendiente |
+| 9 Despliegues con rollback | **Completo en coordinación.** Idempotencia, aprobación ligada, `reconciling`, rollback condicionado. **Sin destino configurado**: no se ha desplegado nada |
 | 10 OAuth nativo elegible | Pendiente |
 | 11 Presupuestos y observabilidad | Pendiente |
 
@@ -299,6 +299,52 @@ solo al crear dejaría pasar por la puerta de atrás un ciclo colado en una
 edición posterior. `Store.acquire_leases` se refactorizó para que su lógica
 viva en un `_acquire(connection, ...)` reutilizable; sin eso no había forma de
 adquirir leases dentro de la transacción de `claim`.
+
+## 9: despliegues, y los dos estados que un binario no sabe expresar
+
+El 9 decide **si** un cambio puede ocurrir, registra **qué** ocurrió, y sabe
+**cómo recuperarse** cuando el destino es ambiguo. Tres cosas que merecen
+quedar escritas:
+
+**La idempotencia está en la base, no en Python.** `UNIQUE (project_id,
+environment, idempotency_key)`. El código compara huellas y devuelve el mismo
+despliegue, pero la constraint es la que garantiza que dos peticiones
+simultáneas no creen dos. Una comprobación en Python habría sido una carrera.
+
+**Se verifica dos veces, y la segunda es la que importa.** Permiso,
+generación de autorización, SHA de comprobaciones, digest y aprobación se
+comprueban antes de pasar a `running` **y otra vez inmediatamente antes del
+efecto externo**. Una revocación que llegue entre las dos detiene el cambio. Con
+una sola comprobación, el instante entre "comprobé" y "cambié" sería una puerta
+abierta.
+
+**`reconciling` y `unknown` son estados, no fallos.** Un timeout ambiguo no se
+reintenta a ciegas: el worker pregunta al destino qué sirve antes de decidir. Y
+si el destino tampoco puede contestar, el entorno queda en `unknown` y **deja de
+aceptar promociones** hasta que una persona lo resuelva. Presentar cualquiera
+de los dos como un fallo plano permitiría que un reintento ciego sobrescribiera
+un despliegue que sí salió. Esa es exactamente la razón de existir del hito.
+
+El rollback va condicionado a tres valores que el llamador leyó antes de
+decidir: `expected_active_deployment_id`, `expected_digest` y
+`environment_generation`. Cualquier desajuste se rechaza y el estado se queda
+igual. Eso es lo que impide que un rollback tardío de A deshaga a B: cuando
+llega, B ya está activo, y rechazarse es la respuesta correcta, no un error que
+sortear.
+
+**Lo que el 9 NO es.** No hay destino de despliegue: ni staging, ni registro,
+ni cuenta de proveedor, ni credencial. El workflow reserva el entorno y se
+detiene ahí. La única implementación es `InProcessDestination`, un objeto en
+proceso para los tests, y no debe describirse como un objetivo. `deploy
+reserve` sigue siendo solo una reserva. Las cuatro comprobaciones que pide la
+aceptación del plan —despliegue en staging, fallo de salud inducido, rollback y
+reenvío idempotente— quedan sin ejecutar, y `docs/DEPLOYMENTS.md` lo dice en su
+primera línea, no al final.
+
+Un detalle sobre el workflow: `cancel-in-progress: false` **no es una garantía
+FIFO**. GitHub no promete orden de ejecución dentro de un grupo de
+concurrencia y puede reordenar. La cola que decide qué llega a un entorno es la
+persistente de CSHCLI en la base, no la de GitHub.
 
 ## Corrección de autoría por squash — verificada y purgada
 
