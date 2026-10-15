@@ -356,6 +356,29 @@ existe ningún camino por el que esto fusione en silencio. Y una revocación
 tras la aceptación **suspende** la cola en vez de integrar bajo el permiso
 antiguo: `process_next` lanza `integration_suspended` y espera a una persona.
 
+## Versionado: por qué 0.2.0 y no 0.1.1
+
+Decisión del propietario: **después de un cambio grande se versiona**. El
+bloque que acababa de cerrar —runner, DAG, cola, despliegues, presupuestos,
+identidad y el guard corregido— es un cambio grande, así que el proyecto pasa
+de `0.1.0` a **`0.2.0`**.
+
+Un cambio de parche habría sido untrue: no es una corrección, es una capacidad
+que antes no existía. Y no es `1.0.0` porque el piloto sigue siendo local, el
+sandbox no existe y el servicio remoto no se ha levantado.
+
+`scripts/release.py` construye, genera `SHA256SUMS` y **verifica la copia
+instalada**, no el árbol de trabajo: probar el árbol no probaría el artefacto.
+Se niega a construir si las dos versiones declaradas no coinciden o si el árbol
+está sucio, y **no firma ni publica**, porque eso necesita una máquina y
+credenciales que aquí no existen. Lo dice en cada ejecución.
+
+Lo que un checksum demuestra y lo que no: que el fichero es el que este
+repositorio produjo. **No dice quién lo publicó**, que es justo por lo que
+firmar figura como pendiente y no como hecho.
+
+El procedimiento completo está en `docs/RELEASES.md`.
+
 ## La web no se publica, por decisión del owner
 
 Existe un directorio `web/` en el árbol de trabajo con `dist/` y `.openai/`. **No
@@ -402,6 +425,39 @@ Anthropic se queda en clave de API o su binario oficial mientras no exista una
 modalidad documentada. CSHCLI no lee ni exporta tokens de Claude.ai, y no
 implementa proxy de OAuth. Los cuatro ficheros que documentan esto están en
 `docs/PROVIDERS.md`.
+
+## Lo que viene ahora: online, sencillo y autoactualización
+
+Decidido por el propietario el 15 de octubre. El plan completo, con sus
+razones, está en `docs/PLAN-ONLINE.md`. **Nada de eso está implementado
+todavía**, y esa distinción importa más que la lista.
+
+Cuatro decisiones, en orden de ejecución:
+
+1. **`cshcli start` y el almacén local de claves.** Hoy hacen falta cuatro
+   pasos y una variable de entorno antes de hacer nada útil. La simplicidad no
+   es quitar comandos: es que el camino por defecto no requiera saberlos. La
+   clave entra pegada y se guarda con permisos restringidos, porque hoy
+   `$env:OPENAI_API_KEY` queda en el historial de la terminal y en el entorno
+   de cada proceso hijo.
+2. **El comando de instalación documentado**, con sus tres advertencias:
+   instala `main` y no una versión, así que no hay reproducibilidad; no
+   comprueba checksums ni firmas; y el comando `cshcli` puede no quedar en el
+   PATH, mientras que `py -m cshcli` siempre funciona.
+3. **`cshcli update`**, que primero **compara y avisa sin tocar nada**, y solo
+   con `--apply` instala, pidendo que escribas el nombre de la versión y
+   comprobando el checksum antes. Instalar código por sorpresa es mala idea
+   aunque el código sea el nuestro: instalar desde `main` es instalar código
+   sin versionar ni reviews.
+4. **`cshcli serve --remote`**, con HTTPS y PostgreSQL. **Va el último porque
+   es el único que puede quedarse esperando infraestructura**, y aquí no hay
+   servidor, ni Docker, ni WSL, ni PostgreSQL.
+
+Ese cuarto punto comparte el bloqueo del hito 7, así que su veredicto es el
+mismo: se escribe y se revisa, pero **"funciona online" no se declara hasta que
+alguien lo haya levantado y dos personas hayan conectado desde máquinas
+distintas.** Esa frase tiene que poder leerse en el README el día que sea
+cierto, y no antes.
 
 ## 11: un coste desconocido no es un coste cero
 

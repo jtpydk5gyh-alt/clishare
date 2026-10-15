@@ -73,6 +73,11 @@ once it leaves alpha.
   checks dependencies, checks state and acquires the leases inside one write
   transaction, so a task is never running without holding what it needs and
   leases are never held by something that is not running.
+- `docs/PLAN-ONLINE.md`: the plan for running online, for a first run that
+  needs no instructions, for an install command with its three caveats, and
+  for an update that reports first and only installs on explicit consent with
+  a checksum check. **Nothing in it is implemented yet**, and the document says
+  so in its first paragraph.
 - Milestone 11: `Usage` and `BudgetPolicy`. Amounts use `Decimal`, and a cost
   without a currency or without the date its price was read is refused rather
   than stored. **Unknown values stay `null` and are excluded from totals, never
@@ -178,6 +183,82 @@ once it leaves alpha.
   and have not been delivered.
 - The `Workspace` boundary is a filesystem boundary, not a sandbox. It does not
   constrain an arbitrary command running inside the workspace.
+
+## [0.2.0] - 2026-10-15
+
+The coordination layer grew past the point where "local pilot" described it
+honestly. This release closes the runner, the task DAG, the integration queue,
+deployments and budgets; it fixes the personal data guard, which had been
+reading the working tree instead of the index; and it adds the plan for
+running online and for a first run that needs no instructions.
+
+### Security
+- The personal data guard read the **working tree** instead of the staged
+  index. `committed_text` built the git spec as `f"{revision}:{name}"`, which
+  for the index revision produced `::name`; git rejects that, and the code
+  silently fell back to the file on disk. A file edited after `git add` was
+  therefore judged on text that was never committed, while the staged text
+  went to the remote unexamined. It now reads the index and fails closed
+  instead of substituting something else.
+- A timeout during a deployment's **health check** escaped as an unhandled
+  exception rather than moving the deployment to `reconciling`. Only the change
+  itself was protected. A destination with a real socket in it is what found it.
+- Usage totals filtered by currency in SQL, so a call with no price vanished
+  from the total and a budget looked cheaper than reality. Records with no
+  currency are now counted as unknown; records in another currency are still
+  excluded, because those are genuinely unrelated.
+- `Personal data guard` is a **required** status check, `main` cannot be force
+  pushed or deleted, and every change arrives through a pull request.
+
+### Added
+- A mediated `Runner`: `read_file`, `write_file`, `remove`, `rename`. Every
+  write validates its lease at the moment the bytes move, a lost heartbeat
+  ends the run, and no method executes a command.
+- `Store.validate_lease` and `Client.validate_lease`/`renew_lease`.
+- `Identity`: expiring sessions stored only as HMAC-SHA256, revocation scoped
+  per member or agent, and an authorization generation that refuses work
+  queued before a revocation.
+- `TaskService`: seven task states, dependency cycles refused on create and on
+  modify, and a `claim` that acquires leases in the same transaction that marks
+  the task running.
+- `IntegrationQueue`: one integration per project, a dedicated worktree, the
+  base recomputed for a second patch, checks on the composed result, and a
+  compare-and-swap that advances the branch only if it had not moved.
+- `DeployService` and `DeployWorker`: per-artefact idempotence enforced by a
+  database constraint, approval bound to the artefact digest, and a rollback
+  refused when the environment moved.
+- `ProcessDestination`: a destination whose state is written by a separate
+  process and whose health is a real HTTP socket, so the four acceptance checks
+  run against something that fails the way a real one fails.
+- `ProviderAuth`: PKCE, one-use state and a local store behind an eligibility
+  registry that ships **empty**. No provider is eligible; the review the plan
+  requires has not been done.
+- `Usage` and `BudgetPolicy` with `Decimal`, refusing any cost without a
+  currency or a price date, and never turning an unknown into zero.
+- `RemoteStore` for PostgreSQL, with row-locked acquisition and a refusal to
+  serve traffic while unverified, plus `migrations/001_remote.sql`,
+  `deploy/compose.yaml` and `docs/OPERATIONS.md`.
+- `docs/PLAN-ONLINE.md`: the plan for running online, for a first run that
+  needs no instructions, and for an update that reports before it changes
+  anything. Nothing in it is implemented yet.
+- `scripts/release.py`: builds the wheel, writes `SHA256SUMS`, and verifies
+  the **installed** copy rather than the working tree. It does not sign or
+  publish, and it says so.
+
+### Known limits, unchanged
+- **No sandbox.** The workspace is a path boundary and the runner mediates
+  every write. There is no CPU, memory, process or network limit, and no
+  arbitrary execution.
+- **No remote service in use.** The PostgreSQL store, its migration and its
+  operations manual exist and the store refuses to serve while unverified, but
+  no server has been run and the concurrency drill has not been executed.
+- **No real deployments.** The coordination is complete and its four
+  acceptance checks pass against a real process, but no provider is configured
+  and nothing has been published anywhere.
+- **No chaos drills, no proven restore, no signed release.**
+- **One reviewer.** `CODEOWNERS` names the owner and the ruleset does not
+  enforce code owner review, so there is no second pair of eyes by design.
+- **The built web is not published**, by decision of the owner.
 
 ## [0.1.0] - 2026-10-14
 

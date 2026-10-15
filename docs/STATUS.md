@@ -7,7 +7,7 @@ plan lives in [the main document](superpowers/plans/2026-10-14-cshcli.md).
 
 | Capability | Observed status |
 | --- | --- |
-| Runnable CLI from source | Help and 0.1.0 version verified |
+| Runnable CLI from source | Help and 0.2.0 version verified |
 | Local HTTP and SQLite WAL | Two-identity flow tested with a real server |
 | owner / member / viewer projects | Read and write paths per permission verified |
 | Invitations | Expiration, single use, and races tested |

@@ -10,14 +10,15 @@ of you work with your own AI accounts, coordinating five of your agents with
 six of theirs through shared memory, leases, isolation, and controlled
 deployments.
 
-| Document | Purpose |
+| Documento | Para qué |
 | --- | --- |
-| [Superplan](docs/superpowers/plans/2026-10-14-cshcli.md) | Product, priorities, architecture, phases, contracts, tests, and acceptance |
-| [Design](docs/superpowers/specs/2026-10-14-cshcli-design.md) | Architecture decisions and coordination invariants |
-| [Protocol](docs/PROTOCOL.md) | Exact API for the existing pilot |
-| [Verified status](docs/STATUS.md) | What exists, what has been tested, and what is still proposed |
-| [README](README.md) | How to run the pilot and its current limits |
-| [Agent rules](AGENTS.md) | Initial repository rules; not present on the public remote by owner decision |
+| [Superplan](docs/superpowers/plans/2026-10-14-cshcli.md) | Producto, prioridades, arquitectura, fases, contratos, tests y aceptación |
+| [Design](docs/superpowers/specs/2026-10-14-cshcli-design.md) | Decisiones de arquitectura e invariantes de coordinación |
+| [Plan online](docs/PLAN-ONLINE.md) | Cómo se operar online, cómo se simplifica la interfaz, cómo se actualiza y cómo se instala |
+| [Protocol](docs/PROTOCOL.md) | API exacta del piloto existente |
+| [Verified status](docs/STATUS.md) | Qué existe, qué se ha probado y qué sigue propuesto |
+| [README](README.md) | Cómo ejecutar el piloto y sus límites actuales |
+| [Agent rules](AGENTS.md) | Reglas iniciales del repositorio; no está en el remoto público por decisión del owner |
 
 Current owner priority: complete the plan before expanding the implementation.
 The local base already in place is preserved as a starting point. Future

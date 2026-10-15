@@ -27,7 +27,7 @@ and AI accounts while sharing decisions and reserving files.
 
 ## Status
 
-**Local pilot, version 0.1.0.** The coordinator, the CLI, the coordination
+**Local pilot, version 0.2.0.** The coordinator, the CLI, the coordination
 store and the publication gate are implemented and covered by tests that run on
 Linux and Windows with Python 3.11, 3.12 and 3.13.
 
@@ -272,12 +272,18 @@ means and for the limits CI does not yet cover.
 
 ## Next deliveries
 
-1. **Sandbox for mediated tools and commands.** The one thing that stops
-   CSHCLI from really containing an agent: a process boundary, not a path
-   boundary.
-2. Remote service with HTTPS, verified accounts, token rotation, and member revocation.
-3. Task DAG and integration queue per SHA.
-4. Per-environment deployment pipeline with verifiable artefacts and rollback.
-5. Eligible native OAuth, budgets, observability, and packaging.
+1. **A first run that needs no instructions.** `cshcli start` asks for a name, a
+   provider and a key, stores the key locally with restricted permissions, and
+   leaves you with a working project. The existing commands stay.
+2. **An install command, and `cshcli update`.** `cshcli update` compares and
+   reports without changing anything; `update --apply` asks you to type the
+   version and checks the checksum first.
+3. **A remote coordinator.** `cshcli serve --remote` over HTTPS with the
+   database on a private network. **Not available yet and not claimed to be.**
+4. Per-environment deployment with a real provider, chaos drills, a proven
+   restore, and a signed release with checksums.
+
+The [online plan](docs/PLAN-ONLINE.md) has the reasoning and the order. The
+[status](docs/STATUS.md) says exactly what has and has not been exercised.
 
 The plan develops each delivery with contracts, tests, and closure conditions.
