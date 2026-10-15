@@ -219,6 +219,36 @@ once it leaves alpha.
 - The `Workspace` boundary is a filesystem boundary, not a sandbox. It does not
   constrain an arbitrary command running inside the workspace.
 
+## [0.3.0] - 2026-10-15
+
+Reaching something useful used to take four commands and an environment
+variable, and a provider key lived in the shell history and in every child
+process an agent spawned. This release makes the first run say what is
+missing, keeps keys out of the environment, reports on updates instead of
+applying them, and proves that a restore reproduces the state without winding
+the fence backwards.
+
+### Added
+- `scripts/restore_drill.py`: backs up the pilot database, restores it into an
+  **empty** database, verifies it, and then proves that a second restore onto
+  the same target is refused. The property it checks hardest is that **the
+  fence never goes backwards**: a backup that preserved row counts but rolled
+  the fence back would look perfect and be dangerous, because an agent from
+  before the backup would validate again. The PostgreSQL version of the same
+  three checks is now a rehearsal rather than a guess.
+- `cshcli serve --remote` checks a remote configuration and **refuses to
+  start** without TLS and a PostgreSQL DSN, and never reports itself started
+  when it did not.
+
+### Fixed
+- The personal data guard took any dotted decorator for a possible email
+  address, which blocked two commits. It was not weakened: the tests were
+  rewritten, because relaxing a security control so your own code passes it
+  stops it protecting anything.
+- The provider capture test required a 200 ms timeout to return in under
+  800 ms, with no margin for starting two interpreters on a busy machine. It
+  now allows 2.5 s, which still proves the parent was not waited out.
+
 ## [0.2.0] - 2026-10-15
 
 The coordination layer grew past the point where "local pilot" described it

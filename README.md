@@ -27,7 +27,7 @@ and AI accounts while sharing decisions and reserving files.
 
 ## Status
 
-**Local pilot, version 0.2.0.** The coordinator, the CLI, the coordination
+**Local pilot, version 0.3.0.** The coordinator, the CLI, the coordination
 store and the publication gate are implemented and covered by tests that run on
 Linux and Windows with Python 3.11, 3.12 and 3.13.
 
@@ -307,7 +307,7 @@ means and for the limits CI does not yet cover.
 2. **An install command, and `cshcli update`.** `cshcli update` compares and
    reports without changing anything; `update --apply` asks you to type the
    version and checks the checksum first, deleting the download if it does not
-   match. There is **no published release yet**, so today it answers
+   match. There is **No published release yet**, so today it answers
    `unknown` rather than pretending you are up to date.
 3. **A remote coordinator.** `cshcli serve --remote` over HTTPS with the
    database on a private network. **Not available yet and not claimed to be.**
