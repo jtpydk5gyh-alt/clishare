@@ -15,6 +15,8 @@ says so and the reason is in [OPERATIONS.md](OPERATIONS.md),
 | Capability | Observed status |
 | --- | --- |
 | Runnable CLI from source | Help and 0.2.0 version verified |
+| First run without instructions | `cshcli start` says what is missing, in order, and names the exact command for it. `cshcli key set` stores a provider key outside the environment. Tested with a mocked coordinator |
+| Key storage | `Keyring` in `.cshcli/keys.json`, readable only by the user on POSIX. A key set in the environment wins over one on disk, because whoever exported it knows what they are doing. Nothing ever prints a key |
 | Published artefact | Wheel builds, `SHA256SUMS` written, and the **installed** copy imports and answers `--help` on Python 3.12.10, Windows. **Not signed, not published, not checked on other platforms** |
 | Local HTTP and SQLite WAL | Two-identity flow tested with a real server |
 | owner / member / viewer projects | Read and write paths per permission verified |
@@ -51,12 +53,13 @@ session. Verification used a standard CPython 3.12 installation; the
 interpreter path is machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests -v`
-returned **423 passing tests in 170 seconds**, with 4 skipped: two symbolic link
-cases on a host that does not grant the privilege, and two PostgreSQL cases
-that need a real server, which does not exist on this machine. The Windows
-junction case runs. Concurrent tests use eleven synchronised threads and, for
-deployments, eleven processes against one environment; they do not yet
-represent eleven distributed machines.
+returned **456 passing tests in 172 seconds**, with 5 skipped: two symbolic link
+cases on a host that does not grant the privilege, two PostgreSQL cases that
+need a real server which does not exist on this machine, and one POSIX file
+permission case that does not apply on Windows. The Windows junction case runs.
+Concurrent tests use eleven synchronised threads and, for deployments, eleven
+processes against one environment; they do not yet represent eleven distributed
+machines.
 
 `python -m compileall -q src tests scripts`, `python scripts/cshcli.py --help`,
 `python scripts/guard_secrets.py --all` and `python scripts/release.py` were
