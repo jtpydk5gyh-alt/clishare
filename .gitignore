@@ -21,3 +21,7 @@ AGENTS.md
 docs/REVISION_PRIVATE.md
 docs/ESTADO_PRIVATE.md
 _workspace/
+
+# Built web output. Not published anywhere by decision of the owner, and not
+# part of the public repository. Do not deploy it and do not commit it.
+web/
