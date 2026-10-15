@@ -30,6 +30,7 @@ A warning is the kind of thing that gets read once and then ignored.
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import subprocess
 import sys
@@ -106,6 +107,7 @@ def checksums(artefacts: list[Path]) -> Path:
 
 
 def verify_install(wheel: Path, version: str, into: Path) -> dict:
+    """Imports and runs the installed copy, not the working tree."""
     if into.exists():
         shutil.rmtree(into)
     into.mkdir(parents=True)
@@ -114,32 +116,26 @@ def verify_install(wheel: Path, version: str, into: Path) -> dict:
         capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode != 0:
         raise ReleaseRefused(f"the wheel did not install: {result.stderr.strip()[-400:]}")
-    environment = {"PATH": "", "PYTHONPATH": str(into), "PYTHONUTF8": "1",
-                   "SYSTEMROOT": "", "HOME": str(into)}
-    import subprocess as sp
-    import os
-    real = dict(os.environ)
-    real.update({"PYTHONPATH": str(into)})
-    for name in ("cshcli", "store", "policy", "runner", "queue", "deploy",
-                 "usage", "identity", "tasks", "provider_auth"):
-        if str(into / "cshcli") not in real.get("PYTHONPATH", ""):
-            pass
-    check = sp.run(
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = str(into)
+    environment["PYTHONUTF8"] = "1"
+    check = subprocess.run(
         [sys.executable, "-c",
          "import cshcli, cshcli.cli, cshcli.deploy, cshcli.queue, cshcli.usage;"
          "print(cshcli.__version__)"],
-        cwd=into, capture_output=True, text=True, env=real)
+        cwd=into, capture_output=True, text=True, env=environment)
     if check.returncode != 0:
         raise ReleaseRefused(f"the installed copy does not import: {check.stderr.strip()[-400:]}")
     reported = check.stdout.strip()
     if reported != version:
         raise ReleaseRefused(
             f"the installed copy reports version {reported}, not {version}")
-    help_run = sp.run([sys.executable, str(into / "cshcli" / "cli.py"), "--help"],
-                       cwd=into, capture_output=True, text=True, env=real)
+    help_run = subprocess.run([sys.executable, "-m", "cshcli", "--help"],
+                              cwd=into, capture_output=True, text=True, env=environment)
     if help_run.returncode != 0:
-        raise ReleaseRefused("the installed CLI does not answer --help")
-    return {"version": reported, "python": sp.sys.version.split()[0],
+        raise ReleaseRefused(
+            f"the installed CLI does not answer --help: {help_run.stderr.strip()[-300:]}")
+    return {"version": reported, "python": sys.version.split()[0],
             "help_lines": len(help_run.stdout.splitlines())}
 
 
