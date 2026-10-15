@@ -35,6 +35,8 @@ def parser():
     serve.add_argument("--db", default=".cshcli/coordinator.sqlite3")
     serve.add_argument("--host", choices=["127.0.0.1", "localhost"], default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
+    serve.add_argument("--remote", action="store_true",
+                       help="Comprobar la configuración remota; no arranca sin HTTPS y DSN")
     auth = commands.add_parser("auth", help="Identidad local de colaboración")
     auth_commands = auth.add_subparsers(dest="action", required=True)
     register = auth_commands.add_parser("register", help="Crear identidad; emite un token personal una sola vez")
@@ -230,6 +232,42 @@ def _update(args):
     return 0
 
 
+def _serve_remote(args):
+    """Checks a remote configuration and refuses to start without TLS.
+
+    The client already refuses plain HTTP to a non-loopback host, so serving
+    one is pointless as well as unsafe: nobody could connect. Starting a
+    coordinator on loopback with a remote DSN would be worse, because it would
+    look like a remote service and behave like a local one.
+
+    What this cannot do is bring PostgreSQL up. It checks what is configured
+    and says what is missing, rather than starting something that would fail
+    later with a connection error.
+    """
+    dsn = os.environ.get("CSHCLI_REMOTE_DSN", "")
+    certificate = os.environ.get("CSHCLI_TLS_CERT", "")
+    report = {"dsn": bool(dsn), "tls_certificate": bool(certificate),
+              "database": "postgresql" if dsn.startswith("postgres") else None,
+              "started": False,
+              "missing": [], "detail": ""}
+    if not dsn:
+        report["missing"].append("CSHCLI_REMOTE_DSN")
+    elif not dsn.startswith("postgres"):
+        report["missing"].append("a PostgreSQL DSN")
+    if not certificate:
+        report["missing"].append("CSHCLI_TLS_CERT")
+    if report["missing"]:
+        report["detail"] = (
+            "The remote coordinator is not configured: "
+            + ", ".join(report["missing"])
+            + ". See docs/OPERATIONS.md.")
+        emit(report)
+        print(report["detail"], file=sys.stderr)
+        return 1
+    emit(report)
+    return 0
+
+
 def execute(args):
     if args.command == "key":
         return _key(args)
@@ -237,6 +275,9 @@ def execute(args):
         return _update(args)
     if args.command == "start":
         return _start(_client(args), args)
+    if args.command == "serve":
+        if getattr(args, "remote", False):
+            return _serve_remote(args)
     if args.command == "serve":
         server = make_server(Path(args.db), args.host, args.port)
         print(f"CSHCLI piloto local: http://{args.host}:{server.server_port}", file=sys.stderr)

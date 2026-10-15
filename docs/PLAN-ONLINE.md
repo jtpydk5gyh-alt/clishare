@@ -124,11 +124,23 @@ de `main` se documenta como la vía de quien quiere lo último.
 | 1 | `cshcli start` y el almacén local de claves | Sin esto, lo demás sigue siendo difícil. Es el que más uso cambia | **Hecho** |
 | 2 | El comando de instalación documentado, con sus tres advertencias | Es la puerta de entrada y hoy no está documentado | **Hecho**, en el README |
 | 3 | `cshcli update`, primero avisando y luego con `--apply` | Depende del 1 y del 2: sin almacén y sin checksums, actualizar es a ciegas | **Hecho** |
-| 4 | `cshcli serve --remote` con HTTPS y PostgreSQL | Es lo más grande y lo único que necesita una máquina. Va último porque es el que puede quedarse esperando infraestructura | Pendiente y bloqueado |
+| 4 | `cshcli serve --remote` con HTTPS y PostgreSQL | Es lo más grande y lo único que necesita una máquina. Va último porque es el que puede quedarse esperando infraestructura | **Parcial.** El comando existe y **se niega a arrancar** sin TLS y sin DSN. Levantar PostgreSQL queda pendiente |
 
-Los pasos 1, 2 y 3 se pueden hacer y verificar aquí. **El 4 no se declara
-hecho hasta que alguien lo levante en un servidor y dos personas se conecten
-desde máquinas distintas.** Esa frase no se abrevia.
+**Sobre el paso 4, con su bloqueo escrito.** `cshcli serve --remote` comprueba
+la configuración y **no arranca nada** que no pueda cumplir: sin `CSHCLI_TLS_CERT`
+no levanta un coordinador remoto, porque el cliente ya rechaza HTTP plano a un
+host que no sea loopback, así que sería inútil además de inseguro. Y arrancar en
+loopback con un DSN remoto sería peor: parecería un servicio remoto y se
+comportaría como uno local.
+
+Lo que **no** puede es levantar PostgreSQL. En esta máquina no hay Docker, ni
+WSL, ni PostgreSQL, así que el comando dice qué falta y ahí se queda. Hay un
+test que afirma que **nunca se declara arrancado** algo que no arrancó, incluso
+con una configuración aparentemente completa.
+
+La parte que queda es real y no simulable: levantar el servidor, probarlo con
+dos máquinas distintas y ejecutar los ensayos de concurrencia contra la base
+de verdad. Eso es lo que hace falta, y no se declara hecho antes de hacerlo.
 
 ## Lo que esto no cambia
 
