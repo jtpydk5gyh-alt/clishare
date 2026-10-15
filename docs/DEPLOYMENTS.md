@@ -63,6 +63,25 @@ induced failure, a rollback and an idempotent re-send to be run. Those four
 remain unverified, and this document is where that is recorded rather than
 implied.
 
+**None of the four needs production.** The acceptance line is "two
+simultaneous attempts do not step on the environment; we know which SHA and
+digest are active; recovery is proven". What has to be demonstrated is that
+recovery works, and that needs a destination that lives **outside the
+process**, not a cloud account.
+
+They all fall for one reason: the only destination here is in-process, so the
+milestone makes no network call at all. The piece that closes them is
+buildable with the standard library and no third-party account:
+
+1. A real child process that writes the digest to a directory.
+2. A localhost HTTP server answering the health check, with a real timeout.
+3. A health failure induced by stopping that server rather than by a flag.
+4. A genuine timeout: a destination that accepts the connection and never
+   answers.
+
+What would still need an account is a cloud provider, credentials, and an
+environment shared by more than one machine.
+
 ## The states
 
 `queued`, `awaiting_approval`, `running`, `reconciling`, `unknown`, `healthy`,
