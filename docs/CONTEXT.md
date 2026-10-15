@@ -356,6 +356,29 @@ existe ningún camino por el que esto fusione en silencio. Y una revocación
 tras la aceptación **suspende** la cola en vez de integrar bajo el permiso
 antiguo: `process_next` lanza `integration_suspended` y espera a una persona.
 
+## Versionado: por qué 0.2.0 y no 0.1.1
+
+Decisión del propietario: **después de un cambio grande se versiona**. El
+bloque que acababa de cerrar —runner, DAG, cola, despliegues, presupuestos,
+identidad y el guard corregido— es un cambio grande, así que el proyecto pasa
+de `0.1.0` a **`0.2.0`**.
+
+Un cambio de parche habría sido untrue: no es una corrección, es una capacidad
+que antes no existía. Y no es `1.0.0` porque el piloto sigue siendo local, el
+sandbox no existe y el servicio remoto no se ha levantado.
+
+`scripts/release.py` construye, genera `SHA256SUMS` y **verifica la copia
+instalada**, no el árbol de trabajo: probar el árbol no probaría el artefacto.
+Se niega a construir si las dos versiones declaradas no coinciden o si el árbol
+está sucio, y **no firma ni publica**, porque eso necesita una máquina y
+credenciales que aquí no existen. Lo dice en cada ejecución.
+
+Lo que un checksum demuestra y lo que no: que el fichero es el que este
+repositorio produjo. **No dice quién lo publicó**, que es justo por lo que
+firmar figura como pendiente y no como hecho.
+
+El procedimiento completo está en `docs/RELEASES.md`.
+
 ## La web no se publica, por decisión del owner
 
 Existe un directorio `web/` en el árbol de trabajo con `dist/` y `.openai/`. **No
