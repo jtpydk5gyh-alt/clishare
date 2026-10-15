@@ -10,7 +10,15 @@ from unittest import mock
 from cshcli import cli, updater
 
 
+NEW_WHEEL = "cshcli-next.whl"
+
+
 class CliUpdateTests(unittest.TestCase):
+    @staticmethod
+    def newer():
+        major, minor, patch = updater.parse_version(updater.current_version())
+        return f"{major}.{minor + 1}.{patch}"
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -27,7 +35,7 @@ class CliUpdateTests(unittest.TestCase):
         return code, out.getvalue(), err.getvalue()
 
     def test_update_reports_and_changes_nothing(self):
-        with mock.patch.object(updater, "newest_remote_version", return_value="v0.3.0"):
+        with mock.patch.object(updater, "newest_remote_version", return_value=self.newer()):
             code, out, err = self.run_cli("update")
         report = json.loads(out)
         self.assertEqual(report["action"], "update")
@@ -35,14 +43,14 @@ class CliUpdateTests(unittest.TestCase):
         self.assertEqual(code, 0)
 
     def test_update_never_asks_to_type_anything_without_apply(self):
-        with mock.patch.object(updater, "newest_remote_version", return_value="v0.3.0"):
+        with mock.patch.object(updater, "newest_remote_version", return_value=self.newer()):
             with mock.patch("builtins.input") as prompt:
                 code, _, _ = self.run_cli("update")
         prompt.assert_not_called()
 
     def test_a_wrong_typed_version_installs_nothing(self):
-        with mock.patch.object(updater, "newest_remote_version", return_value="v0.3.0"):
-            code, _, err = self.run_cli("update", "--apply", return_value="0.9.9")
+        with mock.patch.object(updater, "newest_remote_version", return_value=self.newer()):
+            code, _, err = self.run_cli("update", "--apply", return_value="0.0.1")
         self.assertEqual(code, 1)
         self.assertIn("No coincide", err)
         self.assertFalse((Path(self.home) / "update").exists(),
@@ -77,10 +85,10 @@ class CliUpdateTests(unittest.TestCase):
         import hashlib
         payload = b"wheel-bytes"
         digest = hashlib.sha256(payload).hexdigest()
-        expected = Path(self.home) / "update" / "cshcli-0.3.0.whl"
-        with mock.patch.object(updater, "newest_remote_version", return_value="v0.3.0"):
+        expected = Path(self.home) / "update" / NEW_WHEEL
+        with mock.patch.object(updater, "newest_remote_version", return_value=self.newer()):
             with mock.patch.object(updater, "fetch_checksums",
-                                   return_value={"cshcli-0.3.0.whl": digest}):
+                                   return_value={NEW_WHEEL: digest}):
                 with mock.patch.object(updater, "download") as download:
                     def fake_download(url, target):
                         target.parent.mkdir(parents=True, exist_ok=True)
@@ -89,7 +97,7 @@ class CliUpdateTests(unittest.TestCase):
                     download.side_effect = fake_download
                     with mock.patch.object(updater, "install") as installer:
                         installer.return_value = {"installed": "ok"}
-                        code, out, _ = self.run_cli("update", "--apply", return_value="v0.3.0")
+                        code, out, _ = self.run_cli("update", "--apply", return_value=self.newer())
         self.assertEqual(code, 0)
         download.assert_called_once()
         installer.assert_called_once()
@@ -97,22 +105,22 @@ class CliUpdateTests(unittest.TestCase):
         self.assertEqual(installer.call_args[0][1], digest)
 
     def test_apply_without_published_checksums_installs_nothing(self):
-        with mock.patch.object(updater, "newest_remote_version", return_value="v0.3.0"):
+        with mock.patch.object(updater, "newest_remote_version", return_value=self.newer()):
             with mock.patch.object(updater, "fetch_checksums", return_value={}):
                 with mock.patch.object(updater, "install") as installer:
-                    code, _, err = self.run_cli("update", "--apply", return_value="v0.3.0")
+                    code, _, err = self.run_cli("update", "--apply", return_value=self.newer())
         installer.assert_not_called()
         self.assertEqual(code, 1)
         self.assertIn("No se instaló", err)
 
     def test_apply_stops_when_the_download_fails(self):
-        with mock.patch.object(updater, "newest_remote_version", return_value="v0.3.0"):
+        with mock.patch.object(updater, "newest_remote_version", return_value=self.newer()):
             with mock.patch.object(updater, "fetch_checksums",
-                                   return_value={"cshcli-0.3.0.whl": "0" * 64}):
+                                   return_value={NEW_WHEEL: "0" * 64}):
                 with mock.patch.object(updater, "download",
                                        side_effect=updater.UpdateUnavailable("no")):
                     with mock.patch.object(updater, "install") as installer:
-                        code, _, err = self.run_cli("update", "--apply", return_value="v0.3.0")
+                        code, _, err = self.run_cli("update", "--apply", return_value=self.newer())
         installer.assert_not_called()
         self.assertEqual(code, 1)
 
