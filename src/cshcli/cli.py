@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 from urllib.parse import urlencode
 
-from . import __version__, providers
+from . import __version__, providers, updater
 from .client import Client
 from .errors import DomainError
 from .onboarding import PROVIDER_VARIABLES, Keyring, next_step
@@ -28,6 +28,8 @@ def parser():
     key_show.add_argument("provider")
     key_commands.add_parser("list", help="Ver qué proveedores tienen clave")
     key_commands.add_parser("drop", help="Borrar la clave de un proveedor").add_argument("provider")
+    update = commands.add_parser("update", help="Ver si hay una versión nueva; instala solo con permiso")
+    update.add_argument("--apply", action="store_true", help="Instalar, pidiendo escribir la versión")
     commands.required = True
     serve = commands.add_parser("serve", help="Arrancar el coordinador piloto en loopback")
     serve.add_argument("--db", default=".cshcli/coordinator.sqlite3")
@@ -194,9 +196,45 @@ def _start(client, args):
     return 0
 
 
+def _update(args):
+    """Compares and reports. Changes nothing without `--apply` and a typed version."""
+    try:
+        published = updater.newest_remote_version()
+    except updater.UpdateUnavailable as reason:
+        print(f"cshcli update: {reason}. No se ha tocado nada.", file=sys.stderr)
+        return 1
+    report = updater.compare(updater.current_version(), published)
+    emit(report)
+    if not args.apply:
+        print("\nNo se ha cambiado nada. Usa 'cshcli update --apply' cuando quieras.",
+              file=sys.stderr)
+        return 0
+    if report["action"] != "update":
+        print(f"\nNo hay nada que instalar: {report['detail']}", file=sys.stderr)
+        return 0
+    typed = input(f"\nEscribe {published} para instalar: ").strip()
+    if typed != published:
+        print("No coincide; no se instala nada.", file=sys.stderr)
+        return 1
+    try:
+        digests = updater.fetch_checksums(report["archive"].replace("main.zip", "SHA256SUMS"))
+        if not digests:
+            raise updater.UpdateUnavailable("No hay checksums publicados para comparar")
+        name = sorted(digests)[0]
+        target = Path(os.environ.get("CSHCLI_HOME", ".cshcli")) / "update" / name
+        updater.download(report["archive"], target)
+        emit(updater.install(target, digests[name]))
+    except updater.UpdateUnavailable as reason:
+        print(f"\nNo se instaló: {reason}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def execute(args):
     if args.command == "key":
         return _key(args)
+    if args.command == "update":
+        return _update(args)
     if args.command == "start":
         return _start(_client(args), args)
     if args.command == "serve":

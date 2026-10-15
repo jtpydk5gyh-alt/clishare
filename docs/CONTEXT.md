@@ -23,10 +23,10 @@ guard` como control obligatorio.
 | 10 | `ProviderAuth` con la puerta de elegibilidad **cerrada a propósito** |
 | 11 | `Usage` y `BudgetPolicy` con `Decimal`. **Cerrada en su parte de uso** |
 
-**El siguiente trabajo está escrito**, no empezado: `docs/PLAN-ONLINE.md`
+**El siguiente trabajo está escrito y casi todo hecho**: `docs/PLAN-ONLINE.md`
 cubre hacer que funcione online, simplificar la primera ejecución, documentar el
-comando de instalación y añadir `cshcli update`. Los pasos 1 a 3 se pueden
-hacer aquí; el 4 necesita una máquina.
+comando de instalación y añadir `cshcli update`. Los pasos 1, 2 y 3 están
+hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 
 ## Identidad del repositorio
 
@@ -38,7 +38,7 @@ hacer aquí; el 4 necesita una máquina.
 | Módulo Python | `cshcli`, 21 módulos, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 34, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 456, verdes salvo 5 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
+| Pruebas | 483, verdes salvo 5 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
@@ -499,11 +499,42 @@ la primera ejecución y pierde lo hecho en la segunda.
 
 Los comandos que ya existían **no se quitan**. `start` y `key` se suman.
 
-## Lo que sigue del plan: online y actualización automática
+## Paso 3 hecho: `cshcli update` avisa antes de tocar nada
+
+Pediste autoactualización. Instalar código sin avisar es mala idea aunque el
+código sea el nuestro, y aquí la razón es concreta y no una moralina:
+**instalar desde `main` es instalar código que no está versionado ni
+revisado**. Una herramienta que descargara eso en silencio sería peor que no
+tener actualizador.
+
+Son dos comandos con un solo nombre:
+
+- **`cshcli update` compara y reporta. No cambia nada en disco.**
+- **`cshcli update --apply`** pide que escribas la versión y **verifica el
+  checksum de lo descargado antes de tocar lo ya instalado**.
+
+**Por qué el checksum es el punto entero.** La vía de instalación que pediste
+es un zip servido desde GitHub. Cualquiera que controle esa ruta puede poner
+en ella lo que quiera. Por eso `scripts/release.py` genera `SHA256SUMS`, y por
+eso un artefacto que falla la verificación **se borra en vez de dejarse ahí**:
+un fichero que parece un paquete es peor que no tener fichero.
+
+**Cuando no hay release publicada, la respuesta es `unknown`, no "al día".**
+Decir que estás actualizado cuando no se ha podido comprobar es exactamente el
+tipo de mentira que este repositorio lleva evitando en el resto de su
+documentación. El informe incluye además que la instalación viene de `main`,
+que no está versionada, para que quien lo lea lo sepa antes de decidir.
+
+**No descarga de ninguna rama que no sea `main`**, y no puede convertir un
+artefacto sin verificar en algo instalado.
+
+El paso 4, `cshcli serve --remote`, sigue bloqueado sin servidor.
+
+## El plan online, y dónde está
 
 Decidido por el propietario el 15 de octubre. El plan completo, con sus
-razones, está en `docs/PLAN-ONLINE.md`. El paso 1 ya está hecho; **lo demás
-sigue sin implementar**, y esa distinción importa más que la lista.
+razones, está en `docs/PLAN-ONLINE.md`. **Los pasos 1, 2 y 3 están hechos**;
+el 4 sigue sin implementar, y esa distinción importa más que la lista.
 
 Cuatro decisiones, en orden de ejecución:
 
