@@ -15,6 +15,7 @@ says so and the reason is in [OPERATIONS.md](OPERATIONS.md),
 | Capability | Observed status |
 | --- | --- |
 | Runnable CLI from source | Help and 0.2.0 version verified |
+| Update check | `cshcli update` compares and reports without changing anything. `--apply` needs the version typed and verifies the checksum first. Tested with a fake transport; **no real download has been performed** |
 | First run without instructions | `cshcli start` says what is missing, in order, and names the exact command for it. `cshcli key set` stores a provider key outside the environment. Tested with a mocked coordinator |
 | Key storage | `Keyring` in `.cshcli/keys.json`, readable only by the user on POSIX. A key set in the environment wins over one on disk, because whoever exported it knows what they are doing. Nothing ever prints a key |
 | Published artefact | Wheel builds, `SHA256SUMS` written, and the **installed** copy imports and answers `--help` on Python 3.12.10, Windows. **Not signed, not published, not checked on other platforms** |
@@ -53,7 +54,7 @@ session. Verification used a standard CPython 3.12 installation; the
 interpreter path is machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests -v`
-returned **456 passing tests in 172 seconds**, with 5 skipped: two symbolic link
+returned **483 passing tests in 175 seconds**, with 5 skipped: two symbolic link
 cases on a host that does not grant the privilege, two PostgreSQL cases that
 need a real server which does not exist on this machine, and one POSIX file
 permission case that does not apply on Windows. The Windows junction case runs.

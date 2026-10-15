@@ -40,6 +40,13 @@ once it leaves alpha.
   noreply form.
 
 ### Added
+- `cshcli update`: compares the installed version with the published one and
+  reports. It changes nothing on disk. `update --apply` requires the version to
+  be typed and **verifies the checksum before installing**; an artefact that
+  fails verification is deleted rather than left where it could be mistaken for
+  a package. When no release is published the answer is `unknown`, never "up to
+  date", because claiming to have checked something that was not checked is the
+  same mistake this repository avoids everywhere else.
 - `cshcli start`: the first run says what is missing, in order, and names the
   exact command for it. Reaching something useful took four commands and an
   environment variable; that was a shape problem, not a documentation one.

@@ -306,7 +306,9 @@ means and for the limits CI does not yet cover.
    leaves you with a working project. The existing commands stay.
 2. **An install command, and `cshcli update`.** `cshcli update` compares and
    reports without changing anything; `update --apply` asks you to type the
-   version and checks the checksum first.
+   version and checks the checksum first, deleting the download if it does not
+   match. There is **no published release yet**, so today it answers
+   `unknown` rather than pretending you are up to date.
 3. **A remote coordinator.** `cshcli serve --remote` over HTTPS with the
    database on a private network. **Not available yet and not claimed to be.**
 4. Per-environment deployment with a real provider, chaos drills, a proven
