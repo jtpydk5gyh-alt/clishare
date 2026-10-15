@@ -33,12 +33,12 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | Dato | Valor |
 | --- | --- |
 | Repositorio | `jtpydk5gyh-alt/cshcli`, público, licencia MIT |
-| Versión | `0.2.0`, con `dist/SHA256SUMS` |
+| Versión | `0.3.0`, con `dist/SHA256SUMS` |
 | Rama por defecto | `main`, 46 commits, todos con la noreply de GitHub |
 | Módulo Python | `cshcli`, 21 módulos, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 34, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 492, verdes salvo 5 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
+| Pruebas | 506, verdes salvo 5 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
@@ -398,14 +398,17 @@ antiguo: `process_next` lanza `integration_suspended` y espera a una persona.
 
 ## Versionado: por qué 0.2.0 y no 0.1.1
 
-Decisión del propietario: **después de un cambio grande se versiona**. El
-bloque que acababa de cerrar —runner, DAG, cola, despliegues, presupuestos,
-identidad y el guard corregido— es un cambio grande, así que el proyecto pasa
-de `0.1.0` a **`0.2.0`**.
+Decisión del propietario: **después de un cambio grande se versiona**. Dos
+veces, con dos razones distintas:
 
-Un cambio de parche habría sido untrue: no es una corrección, es una capacidad
-que antes no existía. Y no es `1.0.0` porque el piloto sigue siendo local, el
-sandbox no existe y el servicio remoto no se ha levantado.
+- **`0.1.0` → `0.2.0`**: runner, DAG, cola, despliegues, presupuestos e
+  identidad. Un cambio de parche habría untrue: no es una corrección, es una
+  capacidad que antes no existía. Y no es `1.0.0` porque el piloto sigue siendo
+  local.
+- **`0.2.0` → `0.3.0`**: `cshcli start`, el almacén local de claves,
+  `cshcli update` con checksum, los ensayos de caos y el ensayo de
+  restauración. Otra vez capacidades nuevas, y otra vez el mismo motivo para
+  no ser un parche.
 
 `scripts/release.py` construye, genera `SHA256SUMS` y **verifica la copia
 instalada**, no el árbol de trabajo: probar el árbol no probaría el artefacto.
@@ -712,6 +715,28 @@ directorio y responde en localhost. No es un proveedor de nube y no debe
 describirse como tal. Queda sin verificar lo que necesita credenciales: un
 proveedor real, secretos por entorno y un entorno compartido por más de una
 máquina.
+
+## 11: la restauración, probada de verdad sobre lo que existe
+
+La restauración sobre PostgreSQL no se puede hacer aquí. **La del piloto
+SQLite sí**, y se ha ejecutado. Eso convierte el ensayo de PostgreSQL de un
+hueco en un guion.
+
+`scripts/restore_drill.py` hace copia, restaura sobre una base **vacía**,
+comprueba, y luego lo intenta otra vez para demostrar que un segundo restore
+sobre el mismo destino se **rechaza**. Si se permitiera, ese sería el camino
+hacia dos autoridades.
+
+La propiedad que más importa se comprueba aparte: **el fence nunca retrocede**.
+Una copia que conservara los recuentos de filas pero rebobinara el contador de
+fences parecería perfecta y sería peligrosa, porque un agente anterior a la
+copia volvería a validar. Hay tests para las dos cosas: una restauración
+manipulada que no cuadra se detecta, y un fence rebobinado también.
+
+Las mismas tres comprobaciones —reproducir el estado, conservar el fence,
+rechazar un destino poblado— son el guion del ensayo de PostgreSQL. Haberlas
+ejecutado una vez aquí significa que la versión de PostgreSQL es un ensayo y no
+una suposición.
 
 ## Corrección de autoría por squash — verificada y purgada
 

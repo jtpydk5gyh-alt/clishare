@@ -104,6 +104,25 @@ docker compose -f deploy/compose.yaml exec db pg_dump -U cshcli cshcli > backups
 Restore into an **empty** database, never over a live one. A restore that
 lands on a populated database is how two authorities come into existence.
 
+### The pilot database, drilled for real
+
+The PostgreSQL drill above cannot run here. The pilot's SQLite one can, and
+it has been run:
+
+```
+python scripts/restore_drill.py --db .cshcli/coordinator.sqlite3
+```
+
+It backs up, restores into an empty database, verifies, and then tries again
+to prove that a second restore onto the same target is **refused**. It checks
+the property that matters most: **the fence never goes backwards**. A backup
+that preserved row counts but rolled the fence back would look perfect and be
+dangerous, because an agent from before the backup would validate again.
+
+The same three checks — reproduce the state, keep the fence, refuse a
+populated target — are the recipe for the PostgreSQL drill. Having run them
+once here means the PostgreSQL version is a rehearsal, not a guess.
+
 ## Logs
 
 Never log prompts, tokens or provider keys. The coordinator logs request IDs,

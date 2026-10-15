@@ -14,7 +14,7 @@ says so and the reason is in [OPERATIONS.md](OPERATIONS.md),
 
 | Capability | Observed status |
 | --- | --- |
-| Runnable CLI from source | Help and 0.2.0 version verified |
+| Runnable CLI from source | Help and 0.3.0 version verified |
 | Update check | `cshcli update` compares and reports without changing anything. `--apply` needs the version typed and verifies the checksum first. Tested with a fake transport; **no real download has been performed** |
 | First run without instructions | `cshcli start` says what is missing, in order, and names the exact command for it. `cshcli key set` stores a provider key outside the environment. Tested with a mocked coordinator |
 | Key storage | `Keyring` in `.cshcli/keys.json`, readable only by the user on POSIX. A key set in the environment wins over one on disk, because whoever exported it knows what they are doing. Nothing ever prints a key |
@@ -36,7 +36,7 @@ says so and the reason is in [OPERATIONS.md](OPERATIONS.md),
 | Automatic Git integration | `IntegrationQueue` applies a patch in a dedicated worktree, recomputes the base, runs the checks on the composed result and advances the branch only through a compare-and-swap. **Not wired to HTTP or to the runner yet** |
 | Usage and budgets (11) | `Usage.record` with `Decimal`, currency, price date and unit; unknown costs stay `null` and are excluded from totals rather than zeroed. `authorize_run` never invents an estimate and refuses when usage is incomplete. Audit export states that retention is unconfigured |
 | Chaos drills (11) | **Local drills done.** Stopping the coordinator leaves a running task running, not silently finished; a dead agent's lease expires and a second agent takes the resource; the stale holder cannot renew or release the new lease; state written by one process is read by another; an aborted batch leaves nothing behind; a re-run of an interrupted deploy does not repeat the effect |
-| Restore (11) | **Not done.** Needs a real database, so a real restore cannot be proven here |
+| Restore (11) | **Drill done on the pilot database.** Backup, restore into an empty database, fence never goes backwards, a second restore over a populated target is refused. A **PostgreSQL** restore is still not proven: no server here |
 | Release (11) | Wheel builds, `SHA256SUMS` written, installed copy verified. **Not signed, not published** |
 | Deployment publish and rollback | Coordination complete, and the four acceptance checks run against a separate process and a real health socket. **No provider is configured and nothing has been published anywhere** |
 | Native direct OAuth | `ProviderAuth` implements PKCE, one-use state, exact loopback redirect and a local store, behind a review registry that is **empty on purpose**. No provider is eligible |

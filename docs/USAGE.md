@@ -4,7 +4,7 @@ AI CLI with personal credentials and shared project coordination. The idea: you
 create a project, invite other people, and everyone works with their own agents
 and AI accounts while sharing decisions and reserving files.
 
-**Status: local 0.2.0 pilot.** The CLI, local HTTP coordinator, SQLite, projects,
+**Status: local 0.3.0 pilot.** The CLI, local HTTP coordinator, SQLite, projects,
 invitations, versioned memory, leases, and text-based AI adapters are already in
 place. The remote multi-user service, the runner that controls writes, automatic
 worktrees, the integration queue, and real deployments are still in the plan.
