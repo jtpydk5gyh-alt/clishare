@@ -356,6 +356,22 @@ existe ningún camino por el que esto fusione en silencio. Y una revocación
 tras la aceptación **suspende** la cola en vez de integrar bajo el permiso
 antiguo: `process_next` lanza `integration_suspended` y espera a una persona.
 
+## La web no se publica, por decisión del owner
+
+Existe un directorio `web/` en el árbol de trabajo con `dist/` y `.openai/`. **No
+se sube a ningún sitio y no se despliega.** Decisión del propietario, registrada
+el 15 de octubre de 2026.
+
+Está en `.gitignore` con ese motivo escrito al lado, y **no** en la sección de
+cachés o de secretos, porque no es un artefacto de construcción: es algo que se
+decidió no publicar. Esa diferencia importa dentro de un mes, cuando alguien se
+pregunte por qué esa carpeta está ahí y no la encuentre en ningún sitio.
+
+Esto no es lo mismo que el despliegue del hito 9, que sigue sin destino
+configurado. Aquí la regla es más simple y más dura: **la web no sale**. Si
+algún día cambia, es una decisión nueva y explícita, no una consecuencia de que
+la carpeta ya estuviera.
+
 ## 10: una puerta cerrada, que es el resultado
 
 **Ningún proveedor es elegible para login nativo**, y ese es el hallazgo, no un
