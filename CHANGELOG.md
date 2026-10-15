@@ -40,6 +40,14 @@ once it leaves alpha.
   noreply form.
 
 ### Added
+- `cshcli start`: the first run says what is missing, in order, and names the
+  exact command for it. Reaching something useful took four commands and an
+  environment variable; that was a shape problem, not a documentation one.
+- `cshcli key set|show|list|drop` and a `Keyring` in `.cshcli/keys.json`,
+  readable only by the user on POSIX. A key in the environment still wins over
+  one on disk, because whoever exported it knows what they are doing. Nothing
+  ever prints a key, and a test checks that asking about one provider does not
+  reveal another's.
 - Recorded where the project actually stands: version 0.2.0, 46 commits, 423
   tests, and a table that says for each remaining item whether it can be done
   on this machine. The rule the document follows is that what cannot be checked

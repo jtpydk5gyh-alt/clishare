@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 from . import __version__, providers
 from .client import Client
 from .errors import DomainError
+from .onboarding import PROVIDER_VARIABLES, Keyring, next_step
 from .server import make_server
 
 
@@ -16,7 +17,18 @@ def parser():
     root = argparse.ArgumentParser(prog="cshcli", description="IA personal y coordinación compartida de proyectos (piloto local).")
     root.add_argument("--version", action="version", version=__version__)
     root.add_argument("--url", default=os.environ.get("CSHCLI_URL", "http://127.0.0.1:8765"), help="URL base del coordinador, o CSHCLI_URL")
-    commands = root.add_subparsers(dest="command", required=True)
+    commands = root.add_subparsers(dest="command")
+    start = commands.add_parser("start", help="Primera ejecución: dice qué falta y lo hace")
+    start.add_argument("--provider", default="openai", help="Proveedor a configurar")
+    key = commands.add_parser("key", help="Guardar una clave de proveedor fuera del entorno")
+    key_commands = key.add_subparsers(dest="action", required=True)
+    key_set = key_commands.add_parser("set", help="Guardar una clave; se pide sin eco")
+    key_set.add_argument("provider")
+    key_show = key_commands.add_parser("show", help="Ver si hay clave, nunca su valor")
+    key_show.add_argument("provider")
+    key_commands.add_parser("list", help="Ver qué proveedores tienen clave")
+    key_commands.add_parser("drop", help="Borrar la clave de un proveedor").add_argument("provider")
+    commands.required = True
     serve = commands.add_parser("serve", help="Arrancar el coordinador piloto en loopback")
     serve.add_argument("--db", default=".cshcli/coordinator.sqlite3")
     serve.add_argument("--host", choices=["127.0.0.1", "localhost"], default="127.0.0.1")
@@ -130,7 +142,63 @@ def emit(value):
     print(json.dumps(value, ensure_ascii=False, indent=2))
 
 
+def _keyring():
+    return Keyring(Path(os.environ.get("CSHCLI_HOME", ".cshcli")))
+
+
+def _client(args):
+    return Client(args.url, os.environ.get("CSHCLI_TOKEN"))
+
+
+def _key(args):
+    ring = _keyring()
+    if args.action == "set":
+        secret = getpass.getpass(f"Clave de {args.provider} (no se muestra): ",
+                                 stream=sys.stderr)
+        if not secret.strip():
+            print("No se guardó nada: la clave llegó vacía.", file=sys.stderr)
+            return 1
+        emit(ring.set(args.provider, secret))
+        return 0
+    if args.action == "drop":
+        if not ring.drop(args.provider):
+            print(f"No hay clave guardada para {args.provider}.", file=sys.stderr)
+            return 1
+        print(f"Clave de {args.provider} borrada.")
+        return 0
+    if args.action == "list":
+        emit([ring.describe(name) for name in sorted(PROVIDER_VARIABLES)])
+        return 0
+    report = ring.describe(args.provider)
+    emit(report)
+    return 0 if report["configured"] else 1
+
+
+def _start(client, args):
+    """Says what is missing, and stops when there is nothing left to ask."""
+    store_ready = identity = project = False
+    try:
+        listing = client.request("GET", "/v1/projects")
+        store_ready = True
+        identity = True
+        project = bool(listing.get("projects"))
+    except DomainError as error:
+        if error.status != 503:
+            raise
+    secret, _ = _keyring().resolve(args.provider)
+    step = next_step(store_ready, identity, project, args.provider, secret is not None)
+    print(f"\n{step['detail']}\n")
+    if step["question"]:
+        print(f"  {step['question']}\n")
+    print(f"  siguiente: {step['do']}\n")
+    return 0
+
+
 def execute(args):
+    if args.command == "key":
+        return _key(args)
+    if args.command == "start":
+        return _start(_client(args), args)
     if args.command == "serve":
         server = make_server(Path(args.db), args.host, args.port)
         print(f"CSHCLI piloto local: http://{args.host}:{server.server_port}", file=sys.stderr)

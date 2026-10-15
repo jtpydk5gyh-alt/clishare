@@ -38,7 +38,7 @@ hacer aquí; el 4 necesita una máquina.
 | Módulo Python | `cshcli`, 21 módulos, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 34, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 423, verdes salvo 4 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
+| Pruebas | 456, verdes salvo 5 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
@@ -466,11 +466,44 @@ modalidad documentada. CSHCLI no lee ni exporta tokens de Claude.ai, y no
 implementa proxy de OAuth. Los cuatro ficheros que documentan esto están en
 `docs/PROVIDERS.md`.
 
-## Lo que viene ahora: online, sencillo y autoactualización
+## Paso 1 hecho: `cshcli start` y dónde vive la clave
+
+**El problema real no era la falta de documentación.** Para llegar a algo
+útil hacen falta cuatro comandos y `CSHCLI_TOKEN` en el entorno. Eso no es
+documentación mal escrita: es una forma mala.
+
+`cshcli start` comprueba qué falta y lo dice, en orden, con el comando exacto
+para cada paso: primero el coordinador, luego la identidad, luego el proyecto,
+luego la clave. Cuando no queda nada, dice que está listo. No pide de una vez
+las cuatro cosas, porque alguien que acaba de instalar no sabe todavía qué
+proveedor va a usar, y preguntárselo todo de golpe es la forma de que se vaya.
+
+**La clave dejó de vivir en el entorno.** `$env:OPENAI_API_KEY` es la
+respuesta obvia y la equivocada: queda en el historial de la terminal y la
+hereda **cada proceso hijo que lanza un agente**. `Keyring` la guarda en
+`.cshcli/keys.json`, legible solo por el usuario en POSIX.
+
+La variable de entorno **sigue teniendo prioridad**, y esa es la decisión
+deliberada: quien la exportó a propósito no debe ver su clave sustituida en
+silencio por una vieja que quedó en disco.
+
+Nada imprime una clave, en ningún sitio. `key show` dice si existe, de dónde
+viene y cuánto ocupa; nunca el valor. Hay tests para eso, y uno comprueba que
+el valor de un proveedor no aparece al preguntar por otro.
+
+**Un fallo grave que encontró un test:** abrir el keyring **borraba las
+claves**, porque el constructor escribía un diccionario vacío sin mirar si el
+fichero existía. Un `Keyring` nuevo por cada llamada, y todas las claves al
+aire. Es exactamente el fallo que produce una tool que "parece funcionar" en
+la primera ejecución y pierde lo hecho en la segunda.
+
+Los comandos que ya existían **no se quitan**. `start` y `key` se suman.
+
+## Lo que sigue del plan: online y actualización automática
 
 Decidido por el propietario el 15 de octubre. El plan completo, con sus
-razones, está en `docs/PLAN-ONLINE.md`. **Nada de eso está implementado
-todavía**, y esa distinción importa más que la lista.
+razones, está en `docs/PLAN-ONLINE.md`. El paso 1 ya está hecho; **lo demás
+sigue sin implementar**, y esa distinción importa más que la lista.
 
 Cuatro decisiones, en orden de ejecución:
 

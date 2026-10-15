@@ -119,12 +119,12 @@ de `main` se documenta como la vía de quien quiere lo último.
 
 ## Orden de ejecución
 
-| # | Paso | Por qué en este orden |
-| --- | --- | --- |
-| 1 | `cshcli start` y el almacén local de claves | Sin esto, lo demás sigue siendo difícil. Es el que más uso cambia |
-| 2 | El comando de instalación documentado, con sus tres advertencias | Es la puerta de entrada y hoy no está documentado |
-| 3 | `cshcli update`, primero avisando y luego con `--apply` | Depende del 1 y del 2: sin almacén y sin checksums, actualizar es a ciegas |
-| 4 | `cshcli serve --remote` con HTTPS y PostgreSQL | Es lo más grande y lo único que necesita una máquina. Va último porque es el que puede quedarse esperando infraestructura |
+| # | Paso | Por qué en este orden | Estado |
+| --- | --- | --- | --- |
+| 1 | `cshcli start` y el almacén local de claves | Sin esto, lo demás sigue siendo difícil. Es el que más uso cambia | **Hecho** |
+| 2 | El comando de instalación documentado, con sus tres advertencias | Es la puerta de entrada y hoy no está documentado | **Hecho**, en el README |
+| 3 | `cshcli update`, primero avisando y luego con `--apply` | Depende del 1 y del 2: sin almacén y sin checksums, actualizar es a ciegas | Pendiente |
+| 4 | `cshcli serve --remote` con HTTPS y PostgreSQL | Es lo más grande y lo único que necesita una máquina. Va último porque es el que puede quedarse esperando infraestructura | Pendiente y bloqueado |
 
 Los pasos 1, 2 y 3 se pueden hacer y verificar aquí. **El 4 no se declara
 hecho hasta que alguien lo levante en un servidor y dos personas se conecten
