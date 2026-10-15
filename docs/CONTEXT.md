@@ -14,7 +14,7 @@ historial está documentada al final.
 | Módulo Python | `cshcli`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 28 (`#11`–`#28`, `#30`–`#39`, `#41`, `#43`, `#44`) |
-| Pruebas | 397, verdes salvo 4 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
+| Pruebas | 423, verdes salvo 4 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13; `Personal data guard` obligatorio en `main` |
 
 ## Qué es y qué no es
@@ -126,7 +126,7 @@ escritura sobre la misma base, porque eso produce `database is locked`.
 | 8B DAG y cola de integración | **Completo.** `TaskService` con estados y `claim` atómico, más `IntegrationQueue` con checkout dedicado y avance condicional |
 | 9 Despliegues con rollback | **Cerrado.** Las cuatro comprobaciones de aceptación se ejecutan contra un proceso separado y un socket HTTP real. **Sin proveedor configurado**: nada se ha publicado |
 | 10 OAuth nativo elegible | **Puerta cerrada.** `ProviderAuth` con PKCE, state de un uso y almacén local, detrás de un registro de revisión **vacío a propósito**. Nadie es elegible |
-| 11 Presupuestos y observabilidad | Pendiente |
+| 11 Presupuestos y observabilidad | **Parcial.** `Usage.record` con `Decimal`, presupuestos por periodo, techo de agentes y correlación sin prompts. Falta caos, restore y release firmado |
 
 ## Orden de trabajo acordado
 
@@ -402,6 +402,39 @@ Anthropic se queda en clave de API o su binario oficial mientras no exista una
 modalidad documentada. CSHCLI no lee ni exporta tokens de Claude.ai, y no
 implementa proxy de OAuth. Los cuatro ficheros que documentan esto están en
 `docs/PROVIDERS.md`.
+
+## 11: un coste desconocido no es un coste cero
+
+La regla del plan para este hito es corta y sostiene el resto: usar `decimal`,
+registrar moneda, fecha y unidad, y **los desconocidos se quedan en null y
+nunca se convierten en cero**.
+
+**El bug que estos tests encontraron en mi propio código.** Filtrar por moneda
+en SQL hace que una llamada **sin precio desaparezca del total**, porque no
+tiene moneda que casar. El presupuesto parecía más barato de lo que es, que
+es justo el fallo contra el que advierte el plan. Ahora los registros sin
+moneda se cuentan como desconocidos; los de **otra** moneda sí se excluyen,
+porque esos son genuinamente ajenos. Hay dos tests para no volver a
+confundir uno con otro.
+
+**Nada se estima.** `authorize_run` acepta una estimación del llamante y la
+compara; no la produce. Una estimación inventada por este código sería una
+estimación que la política después trataría como si alguien la hubiera
+revisado. Sin presupuesto, una ejecución se autoriza: el owner puede no haber
+puesto ninguno. Con presupuesto y **sin** estimación, se rechaza con
+`estimate_required`, porque un presupuesto que no puede ver el coste de lo que
+autoriza es decoración. Y si hay llamadas sin precio conocido, se rechaza con
+`usage_incomplete` en vez de sumar la parte conocida como si fuera el total.
+
+`max_agents` se aplica contra las reservas de ejecución activas, que es lo que
+significa un techo de agentes: once contra un límite de diez, la undécima se
+rechaza con `agent_limit_reached`.
+
+**Correlación sin prompts.** `record` guarda request id, proyecto, tarea,
+agente, lease y fence. Un test comprueba que en el evento no aparece `prompt`,
+ni `sk-`, ni `Bearer`, ni nombres de variables de proveedor. La exportación de
+auditoría dice que **la retención no está configurada**, en vez de fingir un
+plazo.
 
 ## 9: despliegues, y los dos estados que un binario no sabe expresar
 
