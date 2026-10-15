@@ -14,7 +14,7 @@ historial está documentada al final.
 | Módulo Python | `cshcli`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 28 (`#11`–`#28`, `#30`–`#39`, `#41`, `#43`, `#44`) |
-| Pruebas | 362, verdes salvo 4 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
+| Pruebas | 376, verdes salvo 4 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13; `Personal data guard` obligatorio en `main` |
 
 ## Qué es y qué no es
@@ -123,7 +123,7 @@ escritura sobre la misma base, porque eso produce `database is locked`.
 | 6C Herramientas mediadas y sandbox | **En curso.** `Runner` con escrituras mediadas, validación de lease inmediata y heartbeat; sin ejecución arbitraria |
 | 7 Servicio remoto y PostgreSQL | **Parcial y declarado.** Driver como extra, `RemoteStore` con bloqueo de fila, migración, compose y OPERATIONS.md. El store se niega a servir mientras diga `unverified` |
 | 8A Puerta de publicación | Completo: fences, generación, propiedad, caducidad, SHA, Git |
-| 8B DAG y cola de integración | `TaskService` completo; falta la cola que aplica parches en un checkout |
+| 8B DAG y cola de integración | **Completo.** `TaskService` con estados y `claim` atómico, más `IntegrationQueue` con checkout dedicado y avance condicional |
 | 9 Despliegues con rollback | **Cerrado.** Las cuatro comprobaciones de aceptación se ejecutan contra un proceso separado y un socket HTTP real. **Sin proveedor configurado**: nada se ha publicado |
 | 10 OAuth nativo elegible | Pendiente |
 | 11 Presupuestos y observabilidad | Pendiente |
@@ -138,7 +138,7 @@ terminado, mientras que el 10 y el 11 son entregas grandes.
 | Orden | Qué | Nota |
 | --- | --- | --- |
 | 1 | ~~Cerrar el 9~~ **Hecho.** Destino fuera del proceso y las cuatro comprobaciones ejecutadas | Encontró un bug real en el manejo de timeouts |
-| 2 | Cola de integración del 8B | Aplica parches en un checkout y corre las comprobaciones |
+| ~~2~~ | ~~Cola de integración del 8B~~ **Hecho.** Checkout dedicado, base recalculada, compare-and-swap |
 | 3 | Hito 10, OAuth nativo elegible | Depende de mecanismos oficiales y de elegibilidad |
 | 4 | Hito 11, presupuestos y observabilidad | `Usage.record`, presupuestos por periodo, correlación, caos |
 
@@ -317,6 +317,44 @@ solo al crear dejaría pasar por la puerta de atrás un ciclo colado en una
 edición posterior. `Store.acquire_leases` se refactorizó para que su lógica
 viva en un `_acquire(connection, ...)` reutilizable; sin eso no había forma de
 adquirir leases dentro de la transacción de `claim`.
+
+## 8B: la cola, y por qué la rama solo se mueve si sigue donde estaba
+
+`accept_patch` del 8A registra que un artefacto merece considerarse. **No es
+un merge**, y a propósito no reserva un fichero durante las horas que tarda una
+revisión humana. Alguien tiene que integrar, y esta es esa parte.
+
+Cuatro reglas, y la razón de cada una:
+
+**Una integración por proyecto a la vez.** Dos parches compuestos a la vez son
+la forma exacta de que cada agente vea como ausente el cambio del otro.
+
+**El base se recalcula, no se confía.** Un segundo parche enviado contra el
+mismo SHA base que el primero se aplica encima de lo que la rama sirva ahora,
+y los checks corren **sobre el resultado compuesto**. Hay un test que lo
+comprueba: dos parches con el mismo padre, uno toca `app.py` y otro su test,
+los dos terminan fusionados y `observed_base` del segundo es el `merge_sha` del
+primero.
+
+**La rama solo se mueve si sigue donde estaba.** La actualización es un
+*compare-and-swap* contra el SHA observado **antes** de correr los checks. Las
+pruebas largas ocurren antes de esa operación corta; cualquier cosa que moviera
+la rama mientras tanto obliga a recalcular. El test simula exactamente eso:
+durante el check, alguien apunta la rama a otro commit, y el resultado queda
+en `review` con la rama ajena intacta.
+
+**El integrador toma sus propias leases** y nunca reutiliza una fence que el
+runner liberó, porque esa fence ya podría habérsele dado a otro.
+
+**El checkout es dedicado.** `_Checkout` crea un worktree propio y lo borra al
+terminar. El árbol de trabajo del usuario no se toca nunca, y hay un test que
+comprueba que la lista de ficheros y el contenido no cambian tras integrar.
+`reset --hard` corre contra el checkout del integrador, nunca contra el tuyo.
+
+Un conflicto o un check que falla dejan la entrada en `review` o `failed`. No
+existe ningún camino por el que esto fusione en silencio. Y una revocación
+tras la aceptación **suspende** la cola en vez de integrar bajo el permiso
+antiguo: `process_next` lanza `integration_suspended` y espera a una persona.
 
 ## 9: despliegues, y los dos estados que un binario no sabe expresar
 

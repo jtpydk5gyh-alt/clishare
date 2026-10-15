@@ -22,13 +22,14 @@ plan lives in [the main document](superpowers/plans/2026-10-14-cshcli.md).
 | Mediated runner (6C) | `Runner` validates the lease immediately before every write, stops on heartbeat loss, and exposes no command execution |
 | Sandbox | **Not a sandbox.** No CPU, memory, process or network limits. Arbitrary execution stays unimplemented by design |
 | Cross-machine service | Proposed, not yet implemented |
-| Automatic Git integration | Proposed, not yet implemented |
+| Automatic Git integration | `IntegrationQueue` applies a patch in a dedicated worktree, recomputes the base, runs the checks on the composed result and advances the branch only through a compare-and-swap. **Not wired to HTTP or to the runner yet** |
 | Deployment publish and rollback | Coordination complete, and the four acceptance checks run against a separate process and a real health socket. **No provider is configured and nothing has been published anywhere** |
 | Native direct OAuth | Proposed, conditioned on official mechanism and eligibility |
 | Personal data guard | Pre-commit hook and a **required** CI check; refuses personal emails, private relay addresses, user paths and a non-noreply identity. Reads the staged index and fails closed |
 | Sessions and revocation (7) | `Identity` issues expiring sessions stored as HMAC hashes, and `authorization_generation` refuses work queued before a revocation |
 | Remote store (7) | PostgreSQL schema, row-locked acquisition and a refusal to serve while unverified. **No server has been run**; the concurrency test skips with its reason |
 | Task DAG (8B) | `TaskService` with seven states, cycle refusal on create and modify, and `claim` that acquires leases in the same transaction |
+| Integration queue (8B) | Serialised per project, dedicated worktree, recomputed base, checks on the composed result, and a compare-and-swap that only advances the branch if it did not move |
 | Branch governance | Ruleset `main-integrity`: no force-push, no deletion, no direct updates, and `Personal data guard` required to merge |
 
 ## Local evidence
@@ -39,7 +40,7 @@ session. Verification used a standard CPython 3.12 installation; the
 interpreter path is machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests -v`
-returned **362 passing tests in 145 seconds**, with 4 skipped: two symbolic link
+returned **376 passing tests in 170 seconds**, with 4 skipped: two symbolic link
 cases on a host that does not grant the privilege, and two PostgreSQL cases
 that need a real server, which does not exist on this machine. The Windows
 junction case runs. Concurrent tests use eleven synchronised threads and, for

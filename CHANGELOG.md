@@ -73,6 +73,15 @@ once it leaves alpha.
   checks dependencies, checks state and acquires the leases inside one write
   transaction, so a task is never running without holding what it needs and
   leases are never held by something that is not running.
+- Milestone 8B completed: `IntegrationQueue`. Integration is serialised per
+  project, applies each patch in a **dedicated worktree** the user's working
+  tree is never part of, recomputes the base so a second patch submitted
+  against the same SHA composes on top of the first, runs the checks on the
+  composed result, and advances the branch through a **compare-and-swap** that
+  fails if anything moved it while the checks ran. A conflict or a failing
+  check leaves the item in `review` or `failed`; there is no silent merge. A
+  member revoked after acceptance suspends the queue instead of integrating
+  under the old permission.
 - Milestone 7: `Identity` issues expiring sessions stored only as HMAC-SHA256
   hashes, revokes one session without ending the rest, and raises
   `authorization_generation` so work queued before a revocation cannot act
