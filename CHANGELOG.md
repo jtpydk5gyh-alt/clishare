@@ -73,6 +73,15 @@ once it leaves alpha.
   checks dependencies, checks state and acquires the leases inside one write
   transaction, so a task is never running without holding what it needs and
   leases are never held by something that is not running.
+- Milestone 10: `ProviderAuth`. **No provider is eligible for native login**:
+  `capabilities` reports `native_login: false` with `reason: "not_reviewed"` and
+  `begin` refuses, because the review registry ships empty on purpose and the
+  plan states that a private repository does not by itself satisfy a provider's
+  requirements. Behind the closed gate: one-use random state, PKCE with S256,
+  exact loopback redirect matching, a ten minute expiry, a local `0600` store,
+  and an exchange that happens on the user's machine and tells the coordinator
+  nothing. Anthropic stays on an API key or its official binary, and CSHCLI
+  never reads or exports Claude.ai tokens. See [providers](docs/PROVIDERS.md).
 - Milestone 8B completed: `IntegrationQueue`. Integration is serialised per
   project, applies each patch in a **dedicated worktree** the user's working
   tree is never part of, recomputes the base so a second patch submitted
