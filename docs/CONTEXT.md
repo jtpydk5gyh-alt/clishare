@@ -14,7 +14,7 @@ historial está documentada al final.
 | Módulo Python | `cshcli`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 28 (`#11`–`#28`, `#30`–`#39`, `#41`, `#43`, `#44`) |
-| Pruebas | 376, verdes salvo 4 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
+| Pruebas | 397, verdes salvo 4 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13; `Personal data guard` obligatorio en `main` |
 
 ## Qué es y qué no es
@@ -125,7 +125,7 @@ escritura sobre la misma base, porque eso produce `database is locked`.
 | 8A Puerta de publicación | Completo: fences, generación, propiedad, caducidad, SHA, Git |
 | 8B DAG y cola de integración | **Completo.** `TaskService` con estados y `claim` atómico, más `IntegrationQueue` con checkout dedicado y avance condicional |
 | 9 Despliegues con rollback | **Cerrado.** Las cuatro comprobaciones de aceptación se ejecutan contra un proceso separado y un socket HTTP real. **Sin proveedor configurado**: nada se ha publicado |
-| 10 OAuth nativo elegible | Pendiente |
+| 10 OAuth nativo elegible | **Puerta cerrada.** `ProviderAuth` con PKCE, state de un uso y almacén local, detrás de un registro de revisión **vacío a propósito**. Nadie es elegible |
 | 11 Presupuestos y observabilidad | Pendiente |
 
 ## Orden de trabajo acordado
@@ -139,7 +139,7 @@ terminado, mientras que el 10 y el 11 son entregas grandes.
 | --- | --- | --- |
 | 1 | ~~Cerrar el 9~~ **Hecho.** Destino fuera del proceso y las cuatro comprobaciones ejecutadas | Encontró un bug real en el manejo de timeouts |
 | ~~2~~ | ~~Cola de integración del 8B~~ **Hecho.** Checkout dedicado, base recalculada, compare-and-swap |
-| 3 | Hito 10, OAuth nativo elegible | Depende de mecanismos oficiales y de elegibilidad |
+| ~~3~~ | ~~Hito 10, OAuth nativo~~ **Hecho.** Puerta cerrada con el registro de revisión vacío |
 | 4 | Hito 11, presupuestos y observabilidad | `Usage.record`, presupuestos por periodo, correlación, caos |
 
 Lo que **no** se puede cerrar aquí, y queda declarado en vez de maquillado:
@@ -355,6 +355,37 @@ Un conflicto o un check que falla dejan la entrada en `review` o `failed`. No
 existe ningún camino por el que esto fusione en silencio. Y una revocación
 tras la aceptación **suspende** la cola en vez de integrar bajo el permiso
 antiguo: `process_next` lanza `integration_suspended` y espera a una persona.
+
+## 10: una puerta cerrada, que es el resultado
+
+**Ningún proveedor es elegible para login nativo**, y ese es el hallazgo, no un
+hueco que alguien rellene después. `capabilities` devuelve `native_login: false`
+y `reason: "not_reviewed"` para todos, y `begin` se niega.
+
+El plan lo pide así: hay que revisar la documentación publicada del proveedor
+**antes** de habilitar nada, registrando el cliente registrado, los scopes, la
+modalidad y las restricciones. Y dice literalmente que *un repositorio privado
+por sí solo no cumple los requisitos*. Estar publicado bajo MIT no es una
+autorización.
+
+**Lo que sí está construido detrás de la puerta.** La maquinaria existe y está
+probada, porque una puerta que nadie ha ejecutado nunca es una puerta, es un
+comentario: state aleatorio de un uso, PKCE con S256, redirect exacto de
+loopback y sin fragmentos, caducidad de diez minutos, almacén local `0600`, y
+el intercambio ocurre en la máquina del usuario con un transporte inyectable
+que un test comprueba que se llama una vez y no reporta nada al coordinador.
+
+**Por qué la puerta vacía es más útil que una implementación sin revisar.**
+Activar el login nativo para un proveedor exige un registro en `REVIEWED` con
+la fecha de revisión, y hay un test que afirma que el registro **está vacío**.
+Ese test es lo único que impide que un proveedor se habilite por una
+edición descuidada, y falla a propósito cuando alguien añade una revisión de
+verdad.
+
+Anthropic se queda en clave de API o su binario oficial mientras no exista una
+modalidad documentada. CSHCLI no lee ni exporta tokens de Claude.ai, y no
+implementa proxy de OAuth. Los cuatro ficheros que documentan esto están en
+`docs/PROVIDERS.md`.
 
 ## 9: despliegues, y los dos estados que un binario no sabe expresar
 

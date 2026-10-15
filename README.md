@@ -22,6 +22,7 @@ and AI accounts while sharing decisions and reserving files.
 | Integration queue | One integration per project, a dedicated worktree the user's tree is never part of, the base recomputed for the second patch, checks on the composed result, and the branch advanced only if it had not moved |
 | Deploy coordination | Idempotent enqueue, approval bound to the artefact digest, `reconciling` when a timeout is ambiguous, and a rollback refused if the environment moved. Tested against a real process and a real health socket |
 | AI providers | OpenAI, Anthropic, Google, **MiniMax**, plus the official Codex, Claude Code and Gemini CLIs, with a capability probe that never invents pricing |
+| Native login | Built and closed. PKCE, one-use state and a local store are in place, but **no provider is eligible**: the eligibility review the plan requires has not been done. See [providers](docs/PROVIDERS.md) |
 | Personal data guard | A pre-commit hook and a **required** CI check that refuse personal addresses, private relay addresses, user paths and a git identity other than the noreply form. The guard reads the staged index, and fails closed if git cannot deliver a file |
 
 ## Status
