@@ -19,6 +19,7 @@ and AI accounts while sharing decisions and reserving files.
 | Revocable authorisation | A generation counter per member and per agent; revoking one invalidates the runs already open |
 | Mediated runner | Every write validates its lease against the coordinator at the moment it happens, stops on heartbeat loss, and has no method that runs a command |
 | Task DAG | Seven states, dependency cycles refused on create and on modify, and claiming a task takes its leases in the same transaction that marks it running |
+| Integration queue | One integration per project, a dedicated worktree the user's tree is never part of, the base recomputed for the second patch, checks on the composed result, and the branch advanced only if it had not moved |
 | Deploy coordination | Idempotent enqueue, approval bound to the artefact digest, `reconciling` when a timeout is ambiguous, and a rollback refused if the environment moved. Tested against a real process and a real health socket |
 | AI providers | OpenAI, Anthropic, Google, **MiniMax**, plus the official Codex, Claude Code and Gemini CLIs, with a capability probe that never invents pricing |
 | Personal data guard | A pre-commit hook and a **required** CI check that refuse personal addresses, private relay addresses, user paths and a git identity other than the noreply form. The guard reads the staged index, and fails closed if git cannot deliver a file |
