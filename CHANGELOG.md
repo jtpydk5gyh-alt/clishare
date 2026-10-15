@@ -40,6 +40,13 @@ once it leaves alpha.
   noreply form.
 
 ### Added
+- Chaos drills that break real things locally: stopping the coordinator leaves
+  a running task running rather than silently finishing it, a dead agent's lease
+  expires and a second agent takes the resource, the stale holder cannot renew
+  or release the new lease, a separate process reads what another wrote, an
+  aborted batch leaves nothing behind, and a re-run of an interrupted deployment
+  does not repeat the effect. Restore against a real database and the drills
+  against a real provider remain unverified and are listed as such.
 - `cshcli update`: compares the installed version with the published one and
   reports. It changes nothing on disk. `update --apply` requires the version to
   be typed and **verifies the checksum before installing**; an artefact that

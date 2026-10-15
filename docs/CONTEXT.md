@@ -38,7 +38,7 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | Módulo Python | `cshcli`, 21 módulos, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 34, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 483, verdes salvo 5 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
+| Pruebas | 492, verdes salvo 5 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
@@ -529,6 +529,41 @@ que no está versionada, para que quien lo lea lo sepa antes de decidir.
 artefacto sin verificar en algo instalado.
 
 El paso 4, `cshcli serve --remote`, sigue bloqueado sin servidor.
+
+## 11: ensayos de caos locales, y lo que sigue sin poder probarse
+
+El plan pide parar el coordinador, perder la red y matar un runner a mitad de
+un despliegue, y recuperar con fences, idempotencia y estado persistido.
+Parte necesita una máquina y un proveedor reales, y eso queda declarado como
+no verificado. **Lo que sí se puede romper aquí, se rompe de verdad**, contra
+un fichero SQLite real y un servidor HTTP real:
+
+- se para el coordinador con una tarea en `running`, y al volver la tarea sigue
+  `running`. **No se da por terminada en silencio**, que es lo que haría un
+  sistema que pierde la noción de lo que estaba en curso.
+- la lease de un agente muerto caduca y un segundo agente entra; el titular
+  viejo no puede renovar ni soltar la lease del nuevo.
+- un proceso separado lee lo que otro escribió. Frontera real, no simulada.
+- un lote abortado no deja nada a medias.
+- un despliegue interrumpido y reejecutado no repite el efecto.
+
+**Lo que no se puede probar aquí, y se dice en vez de insinuar:** la
+restauración sobre una base real, y el ensayo con un proveedor de verdad. No
+hay base que restaurar ni credenciales, y un test que usara un doble en lugar
+de una base real estaría probando el doble.
+
+Un detalle que costó tiempo y conviene no repetir: el primer intento de
+"transacción sin terminar" **no significaba nada en Windows**, porque el
+bloqueo de fichero impide reproducirlo de forma fiable. Se sustituyó por el
+ensayo de proceso separado, que sí demuestra algo. Un test que parece cubrir
+algo y no cubre nada es peor que no tenerlo.
+
+**El test de captura del proveedor llevaba toda la sesión fallando bajo carga.**
+Exigía que el timeout de 200 ms volviera en menos de 800 ms, sin margen para el
+arranque de dos intérpretes de Python en una máquina ocupada. El padre del
+proceso duerme 5 s, así que un umbral de 2,5 s sigue probando lo que importa —que
+no esperó al padre— sin depender de lo rápido que arranque Python. El resto de
+la batería pasó siempre en verde, así que era margen, no lógica.
 
 ## El plan online, y dónde está
 
