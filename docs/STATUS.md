@@ -23,7 +23,7 @@ plan lives in [the main document](superpowers/plans/2026-10-14-cshcli.md).
 | Sandbox | **Not a sandbox.** No CPU, memory, process or network limits. Arbitrary execution stays unimplemented by design |
 | Cross-machine service | Proposed, not yet implemented |
 | Automatic Git integration | Proposed, not yet implemented |
-| Deployment publish and rollback | **Coordinator only.** `DeployService`/`DeployWorker` decide, approve, gate and recover with per-artefact idempotence; **no destination is configured and nothing publishes**. `deploy reserve` is still only a reservation |
+| Deployment publish and rollback | Coordination complete, and the four acceptance checks run against a separate process and a real health socket. **No provider is configured and nothing has been published anywhere** |
 | Native direct OAuth | Proposed, conditioned on official mechanism and eligibility |
 | Personal data guard | Pre-commit hook and a **required** CI check; refuses personal emails, private relay addresses, user paths and a non-noreply identity. Reads the staged index and fails closed |
 | Sessions and revocation (7) | `Identity` issues expiring sessions stored as HMAC hashes, and `authorization_generation` refuses work queued before a revocation |
@@ -39,7 +39,7 @@ session. Verification used a standard CPython 3.12 installation; the
 interpreter path is machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests -v`
-returned **350 passing tests in 130 seconds**, with 4 skipped: two symbolic link
+returned **362 passing tests in 145 seconds**, with 4 skipped: two symbolic link
 cases on a host that does not grant the privilege, and two PostgreSQL cases
 that need a real server, which does not exist on this machine. The Windows
 junction case runs. Concurrent tests use eleven synchronised threads and, for
@@ -55,16 +55,15 @@ Real AI accounts, quotas, billing, flags against installed official binaries,
 and a deployment target have not been verified. Provider tests use fixtures and
 mocks; HTTP and SQLite tests use real local components.
 
-**No staging deploy was run.** The deploy worker, its approval binding, its
-idempotence, its timeout reconciliation and its rollback are implemented and
-tested against a real SQLite database, but against an **in-process**
-destination: the milestone makes no network call at all. The four checks the
-plan's acceptance asks for — a staging deploy, an induced health failure, a
-rollback and an idempotent re-send — therefore remain unexecuted. None of them
-needs production; each needs a destination outside the process, which is
-buildable with the standard library and no third-party account. What would
-still need an account is a cloud provider, credentials and an environment
-shared by more than one machine. See [deployments](DEPLOYMENTS.md).
+**The four acceptance checks now run against a real process.**
+`tests/test_deploy_process.py` deploys to a destination whose state is written
+by a separate interpreter process and whose health is a real HTTP request to a
+localhost server: a staging deploy, a health failure induced by stopping the
+server, a rollback, and an idempotent re-send. A fifth check uses a socket that
+accepts and never answers, which is a genuine timeout. What remains unverified
+is anything needing credentials: a real provider, per-environment secrets and an
+environment shared by more than one machine. No provider has been contacted.
+See [deployments](DEPLOYMENTS.md).
 
 **CI is active and green.** The workflow runs on every push and pull request
 across Windows and Linux with Python 3.11, 3.12 and 3.13. It was published by

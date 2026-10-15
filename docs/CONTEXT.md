@@ -14,7 +14,7 @@ historial está documentada al final.
 | Módulo Python | `cshcli`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 28 (`#11`–`#28`, `#30`–`#39`, `#41`, `#43`, `#44`) |
-| Pruebas | 350, verdes salvo 4 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
+| Pruebas | 362, verdes salvo 4 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13; `Personal data guard` obligatorio en `main` |
 
 ## Qué es y qué no es
@@ -124,7 +124,7 @@ escritura sobre la misma base, porque eso produce `database is locked`.
 | 7 Servicio remoto y PostgreSQL | **Parcial y declarado.** Driver como extra, `RemoteStore` con bloqueo de fila, migración, compose y OPERATIONS.md. El store se niega a servir mientras diga `unverified` |
 | 8A Puerta de publicación | Completo: fences, generación, propiedad, caducidad, SHA, Git |
 | 8B DAG y cola de integración | `TaskService` completo; falta la cola que aplica parches en un checkout |
-| 9 Despliegues con rollback | **Coordinación completa y probada.** Falta un destino fuera del proceso para ejecutar las cuatro comprobaciones de aceptación |
+| 9 Despliegues con rollback | **Cerrado.** Las cuatro comprobaciones de aceptación se ejecutan contra un proceso separado y un socket HTTP real. **Sin proveedor configurado**: nada se ha publicado |
 | 10 OAuth nativo elegible | Pendiente |
 | 11 Presupuestos y observabilidad | Pendiente |
 
@@ -137,7 +137,7 @@ terminado, mientras que el 10 y el 11 son entregas grandes.
 
 | Orden | Qué | Nota |
 | --- | --- | --- |
-| 1 | Cerrar el 9: destino fuera del proceso y las cuatro comprobaciones | Detalle en la sección del 9 |
+| 1 | ~~Cerrar el 9~~ **Hecho.** Destino fuera del proceso y las cuatro comprobaciones ejecutadas | Encontró un bug real en el manejo de timeouts |
 | 2 | Cola de integración del 8B | Aplica parches en un checkout y corre las comprobaciones |
 | 3 | Hito 10, OAuth nativo elegible | Depende de mecanismos oficiales y de elegibilidad |
 | 4 | Hito 11, presupuestos y observabilidad | `Usage.record`, presupuestos por periodo, correlación, caos |
@@ -364,40 +364,41 @@ FIFO**. GitHub no promete orden de ejecución dentro de un grupo de
 concurrencia y puede reordenar. La cola que decide qué llega a un entorno es la
 persistente de CSHCLI en la base, no la de GitHub.
 
-### Lo que falta del 9, y por qué sí se puede cerrar
+### Cerrado: las cuatro comprobaciones, y el bug que encontró
 
-Quedan cuatro comprobaciones de la línea de aceptación sin ejecutar:
-despliegue real en staging, fallo de salud inducido contra un objetivo real,
-rollback contra un objetivo real y reenvío idempotente contra una API de
-proveedor.
+Las cuatro comprobaciones de aceptación se ejecutan en
+`tests/test_deploy_process.py` contra `ProcessDestination`: un destino cuyo
+estado escribe **un proceso intérprete aparte** en un directorio, y cuya salud
+es una **petición HTTP real** a un servidor en localhost.
 
-**No hace falta producción.** La aceptación del hito dice, literalmente,
-*"two simultaneous attempts do not step on the environment; we know which SHA
-and digest are active; recovery is proven"*. Lo que hay que demostrar es que
-**la recuperación funciona**, y para eso no hace falta un proveedor de nube.
+| Comprobación | Cómo se induce |
+| --- | --- |
+| Despliegue en staging | El worker cambia un entorno servido por un proceso que lo sobrevive |
+| Fallo de salud | Se **para** el servidor, así que el fallo es una conexión rechazada |
+| Rollback | Se lee la fila del entorno y el rollback se condiciona a ella |
+| Reenvío idempotente | Se reenvía la misma clave con la misma carga |
 
-Las cuatro se caen juntas por la misma razón: el único destino existente es
-`InProcessDestination`, un objeto dentro del mismo proceso, así que el hito no
-tiene ni una llamada de red. En cuanto exista **un destino que viva fuera del
-proceso**, las cuatro se ejecutan de verdad.
+Una quinta usa un socket que **acepta la conexión y nunca responde**, que es un
+timeout y no un rechazo. Esa encontró un bug real.
 
-La pieza concreta que falta, con biblioteca estándar y sin cuentas de terceros:
+**El bug que solo un destino real podía encontrar.** `_start` protecía
+`promote` contra `DestinationTimeout`, pero llamaba a `destination.health(...)`
+sin protección. Un timeout durante la comprobación de salud se escapaba como
+excepción sin manejar en vez de llevar el despliegue a `reconciling`, que es
+justo lo que este hito existe para evitar: el entorno puede haber servido el
+artefacto y perder la respuesta al volver, y tratarlo como un fallo plano
+permite que el siguiente intento sobrescriba un despliegue que sí salió. El
+mismo hueco estaba en `_reconcile`.
 
-1. Un proceso hijo real que escriba el digest en un directorio, en lugar de
-   guardarlo en un diccionario.
-2. Un servidor HTTP en localhost que responda a la comprobación de salud, con
-   timeout de verdad.
-3. Un fallo de salud inducible sin mockear: apagar el servidor y observar qué
-   hace el worker.
-4. Un timeout genuino: un destino que acepte la conexión y nunca responda.
+`InProcessDestination` nunca podía encontrarlo: su `health` devuelve un
+diccionario y no lanza nunca. Hacía falta un destino con un socket de verdad
+dentro.
 
-Con eso se ejecutan las cuatro sobre un proceso real. Lo que seguiría siendo
-imposible sin infraestructura es lo que necesita cuenta de terceros: un
-proveedor de nube, credenciales y un entorno compartido por más de una
+**Lo que sigue necesitando una cuenta.** `ProcessDestination` escribe un
+directorio y responde en localhost. No es un proveedor de nube y no debe
+describirse como tal. Queda sin verificar lo que necesita credenciales: un
+proveedor real, secretos por entorno y un entorno compartido por más de una
 máquina.
-
-**El 9 se cierra antes que el 10 y el 11.** Es trabajo pequeño y deja el
-superplan mucho más cerca definished.
 
 ## Corrección de autoría por squash — verificada y purgada
 

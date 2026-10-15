@@ -340,7 +340,10 @@ class DeployWorker:
                              external_id=timeout.external_id,
                              detail="The destination timed out; its state is read before any re-run.")
                 return self._load(connection, deployment_id)
-        report = self.destination.health(record["artifact_digest"])
+        report = self._ask_health(record["artifact_digest"], deployment_id, lease, result["external_id"])
+        if report is None:
+            with self.store._connection() as connection:
+                return self._load(connection, deployment_id)
         healthy = bool(report.get("healthy"))
         with self.store._connection(write=True) as connection:
             self._finish(connection, deployment_id, HEALTHY if healthy else FAILED, lease,
@@ -352,6 +355,23 @@ class DeployWorker:
         if not healthy:
             self._restore(settled)
         return settled
+
+    def _ask_health(self, digest, deployment_id, lease, external_id=None):
+        """Asks the destination whether it is healthy, or reconciles instead.
+
+        A timeout during the health check is as ambiguous as one during the
+        change: the environment may well have served the artefact and lost the
+        answer on the way back. Treating it as a plain failure would let the
+        next attempt overwrite a deployment that actually landed.
+        """
+        try:
+            return self.destination.health(digest)
+        except DestinationTimeout as timeout:
+            with self.store._connection(write=True) as connection:
+                self._finish(connection, deployment_id, RECONCILING, lease,
+                             external_id=external_id or timeout.external_id,
+                             detail="The health check timed out; its state is read before any re-run.")
+                return None
 
     def _reconcile(self, deployment_id: str) -> dict:
         with self.store._connection() as connection:
@@ -366,7 +386,13 @@ class DeployWorker:
                 self._settle_refused(connection, deployment_id, deployment["external_id"],
                                       "The destination serves another artefact than the one requested.")
                 return self._load(connection, deployment_id)
-        report = self.destination.health(deployment["artifact_digest"])
+        try:
+            report = self.destination.health(deployment["artifact_digest"])
+        except DestinationTimeout:
+            with self.store._connection(write=True) as connection:
+                self._settle_state(connection, deployment_id, RECONCILING,
+                                   detail="The health check timed out while reconciling.")
+                return self._load(connection, deployment_id)
         with self.store._connection(write=True) as connection:
             if report.get("healthy"):
                 self._activate(connection, deployment["project_id"], deployment["environment"],

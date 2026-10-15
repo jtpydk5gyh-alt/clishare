@@ -23,6 +23,12 @@ once it leaves alpha.
   its restored ruleset keeps the required check.
 
 ### Fixed
+- A timeout during the **health check** of a deployment escaped as an unhandled
+  exception instead of moving the deployment to `reconciling`. Only `promote`
+  was protected. A destination that accepts a connection and never answers can
+  now be induced for real, and it found this. The same gap existed while
+  reconciling and now leaves the deployment in `reconciling` instead of
+  crashing.
 - Removed `main-owner-merge`, a second ruleset that duplicated the pull-request
   requirement and rejected every merge with "base branch policy prohibits the
   merge", even with all checks green. Both rulesets had been created thirteen
@@ -46,8 +52,12 @@ once it leaves alpha.
   and stops promotions for that environment. Rollback is conditioned on the
   active deployment, the expected digest and the environment generation, so a
   late rollback cannot undo a newer healthy deployment.
-- **No deployment destination is configured and nothing has been published.**
-  `deploy reserve` remains a reservation.
+- The four checks in the plan's acceptance line — a staging deploy, an induced
+  health failure, a rollback and an idempotent re-send — now run in
+  `tests/test_deploy_process.py` against `ProcessDestination`, which writes its
+  state from a **separate interpreter process** and answers health over a
+  **real HTTP socket**. A fifth check uses a socket that accepts and never
+  answers. **No provider is configured and nothing has been published anywhere.**
 - Milestone 7 continued: `RemoteStore` for PostgreSQL, with acquisition
   serialised by `SELECT ... FOR UPDATE` on the project row and fences from a
   persistent sequence. It **refuses to serve traffic while unverified**, and

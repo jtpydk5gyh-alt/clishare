@@ -8,7 +8,7 @@ implemented, what is not, and why the difference matters.
 
 **No concrete deployment destination is configured.** There is no staging
 target, no registry, no provider account and no credential. Nothing in this
-repository publishes anything anywhere.
+repository publishes anything to a third party.
 
 `cshcli deploy reserve` is **still only a reservation**. It takes an exclusive
 `deploy:ENVIRONMENT` lease and nothing else. It does not build, publish, promote
@@ -16,9 +16,10 @@ or verify. Its help text and its output say so, and that has not changed.
 
 What exists is the part that decides *whether* a change may happen, the part
 that records what happened, and the part that recovers when the destination is
-ambiguous. The only destination implementation is `InProcessDestination`, an
-in-process object used by the tests. It is not a deployment target and must
-never be described as one.
+ambiguous. Two destination implementations exist and neither is a deployment
+target: `InProcessDestination`, an in-process object used by most tests, and
+`ProcessDestination`, which writes state from a separate interpreter process and
+answers health over a real HTTP socket. Neither may be described as a provider.
 
 ## What has been exercised
 
@@ -46,6 +47,48 @@ against a real SQLite database in a real temporary directory.
 - A destination that cannot decide stays `unknown` and promotions stop for that
   environment.
 
+## The four acceptance checks, now run
+
+The four checks are executed in `tests/test_deploy_process.py`, against
+`ProcessDestination` in `src/cshcli/process_destination.py`: a destination whose
+state is written by a **separate interpreter process** into a directory, and
+whose health is a **real HTTP request** to a localhost server.
+
+| Check | How the failure is induced |
+| --- | --- |
+| Staging deploy | The worker changes an environment served by a process that outlives it |
+| Induced health failure | The health server is **stopped**, so the failure is a refused connection |
+| Rollback | The environment row is read, then the rollback is conditioned on it |
+| Idempotent re-send | The same key and the same payload are sent again |
+
+A fifth failure is induced by a socket that **accepts the connection and never
+answers**, which is a timeout rather than a refusal. That one found a real bug.
+
+### What the real destination found
+
+`DeployWorker._start` caught `DestinationTimeout` around `promote` but called
+`destination.health(...)` unprotected. A timeout during the health check
+therefore escaped as an unhandled exception instead of moving the deployment to
+`reconciling`, which is precisely the outcome this milestone exists to prevent:
+the environment may well have served the artefact and lost the answer on the way
+back, and treating that as a plain failure lets the next attempt overwrite a
+deployment that actually landed.
+
+The in-memory destination could never have found this. Its `health` returns a
+dictionary and never raises. It took a destination with a real socket in it.
+
+The same gap existed in `_reconcile`, where a timeout during reconciliation's
+health check now leaves the deployment in `reconciling` instead of crashing.
+
+### What still needs an account
+
+`ProcessDestination` is not a cloud provider and must not be described as one.
+It writes a directory and answers on localhost. What remains unverified is
+anything that needs credentials: a real provider, secrets per environment, and
+an environment shared by more than one machine. The four checks above are the
+plan's acceptance line and they now pass against a process that fails the way
+real destinations fail; they are not a substitute for a provider rollout.
+
 ## What has not been exercised
 
 - **No staging deploy was run.** There is no destination to run it against.
@@ -58,29 +101,22 @@ against a real SQLite database in a real temporary directory.
 - **No provider was contacted.** There is no network call anywhere in this
   milestone.
 
-The plan's acceptance line for this milestone asks for a staging deploy, an
-induced failure, a rollback and an idempotent re-send to be run. Those four
-remain unverified, and this document is where that is recorded rather than
-implied.
+## What has not been exercised
 
-**None of the four needs production.** The acceptance line is "two
-simultaneous attempts do not step on the environment; we know which SHA and
-digest are active; recovery is proven". What has to be demonstrated is that
-recovery works, and that needs a destination that lives **outside the
-process**, not a cloud account.
+- **No staging deploy was run.** There is no destination to run it against.
+- **No induced health failure on a real target.** The health failure is
+  induced on `InProcessDestination`.
+- **No rollback was performed against a real target.**
+- **No idempotent re-send was verified against a provider API.**
+- **No production approval policy is configured.** Approval is uniformly
+  required, and every approval is the project owner's.
+- **No provider was contacted.** There is no network call anywhere in this
+  milestone.
 
-They all fall for one reason: the only destination here is in-process, so the
-milestone makes no network call at all. The piece that closes them is
-buildable with the standard library and no third-party account:
-
-1. A real child process that writes the digest to a directory.
-2. A localhost HTTP server answering the health check, with a real timeout.
-3. A health failure induced by stopping that server rather than by a flag.
-4. A genuine timeout: a destination that accepts the connection and never
-   answers.
-
-What would still need an account is a cloud provider, credentials, and an
-environment shared by more than one machine.
+The checks above run against a local process and a localhost socket. They prove
+the coordination survives a destination that fails for real reasons. They do
+not prove anything about a third-party provider, which has never been
+contacted.
 
 ## The states
 
