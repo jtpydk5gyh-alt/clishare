@@ -57,12 +57,14 @@ mocks; HTTP and SQLite tests use real local components.
 
 **No staging deploy was run.** The deploy worker, its approval binding, its
 idempotence, its timeout reconciliation and its rollback are implemented and
-tested against a real SQLite store and a real in-process destination object. The
-concrete destination is not configured, no provider was contacted, and the plan's
-acceptance line for this milestone — a staging deploy, an induced health failure,
-a rollback and an idempotent re-send against a real target — remains
-unverified. [docs/DEPLOYMENTS.md](DEPLOYMENTS.md) records exactly what has and
-has not been exercised.
+tested against a real SQLite database, but against an **in-process**
+destination: the milestone makes no network call at all. The four checks the
+plan's acceptance asks for — a staging deploy, an induced health failure, a
+rollback and an idempotent re-send — therefore remain unexecuted. None of them
+needs production; each needs a destination outside the process, which is
+buildable with the standard library and no third-party account. What would
+still need an account is a cloud provider, credentials and an environment
+shared by more than one machine. See [deployments](DEPLOYMENTS.md).
 
 **CI is active and green.** The workflow runs on every push and pull request
 across Windows and Linux with Python 3.11, 3.12 and 3.13. It was published by

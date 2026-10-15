@@ -123,10 +123,28 @@ escritura sobre la misma base, porque eso produce `database is locked`.
 | 6C Herramientas mediadas y sandbox | **En curso.** `Runner` con escrituras mediadas, validación de lease inmediata y heartbeat; sin ejecución arbitraria |
 | 7 Servicio remoto y PostgreSQL | **Parcial y declarado.** Driver como extra, `RemoteStore` con bloqueo de fila, migración, compose y OPERATIONS.md. El store se niega a servir mientras diga `unverified` |
 | 8A Puerta de publicación | Completo: fences, generación, propiedad, caducidad, SHA, Git |
-| 8B DAG y cola de integración | **En curso.** `TaskService` con estados, ciclos y `claim` atómico; falta la cola que aplica parches en un checkout |
-| 9 Despliegues con rollback | **Completo en coordinación.** Idempotencia, aprobación ligada, `reconciling`, rollback condicionado. **Sin destino configurado**: no se ha desplegado nada |
+| 8B DAG y cola de integración | `TaskService` completo; falta la cola que aplica parches en un checkout |
+| 9 Despliegues con rollback | **Coordinación completa y probada.** Falta un destino fuera del proceso para ejecutar las cuatro comprobaciones de aceptación |
 | 10 OAuth nativo elegible | Pendiente |
 | 11 Presupuestos y observabilidad | Pendiente |
+
+## Orden de trabajo acordado
+
+Decidido por el propietario el 15 de octubre: **el cierre del 9 va primero, y
+el 10 y el 11 quedan para después.** No porque sean más importantes, sino
+porque cerrar el 9 es trabajo pequeño y deja el superplan mucho más cerca de
+terminado, mientras que el 10 y el 11 son entregas grandes.
+
+| Orden | Qué | Nota |
+| --- | --- | --- |
+| 1 | Cerrar el 9: destino fuera del proceso y las cuatro comprobaciones | Detalle en la sección del 9 |
+| 2 | Cola de integración del 8B | Aplica parches en un checkout y corre las comprobaciones |
+| 3 | Hito 10, OAuth nativo elegible | Depende de mecanismos oficiales y de elegibilidad |
+| 4 | Hito 11, presupuestos y observabilidad | `Usage.record`, presupuestos por periodo, correlación, caos |
+
+Lo que **no** se puede cerrar aquí, y queda declarado en vez de maquillado:
+el almacenamiento PostgreSQL y el despliegue HTTPS del hito 7. No hay Docker,
+ni WSL, ni PostgreSQL en esta máquina.
 
 ## Gobernanza: quién puede commitear y fusionar
 
@@ -345,6 +363,41 @@ Un detalle sobre el workflow: `cancel-in-progress: false` **no es una garantía
 FIFO**. GitHub no promete orden de ejecución dentro de un grupo de
 concurrencia y puede reordenar. La cola que decide qué llega a un entorno es la
 persistente de CSHCLI en la base, no la de GitHub.
+
+### Lo que falta del 9, y por qué sí se puede cerrar
+
+Quedan cuatro comprobaciones de la línea de aceptación sin ejecutar:
+despliegue real en staging, fallo de salud inducido contra un objetivo real,
+rollback contra un objetivo real y reenvío idempotente contra una API de
+proveedor.
+
+**No hace falta producción.** La aceptación del hito dice, literalmente,
+*"two simultaneous attempts do not step on the environment; we know which SHA
+and digest are active; recovery is proven"*. Lo que hay que demostrar es que
+**la recuperación funciona**, y para eso no hace falta un proveedor de nube.
+
+Las cuatro se caen juntas por la misma razón: el único destino existente es
+`InProcessDestination`, un objeto dentro del mismo proceso, así que el hito no
+tiene ni una llamada de red. En cuanto exista **un destino que viva fuera del
+proceso**, las cuatro se ejecutan de verdad.
+
+La pieza concreta que falta, con biblioteca estándar y sin cuentas de terceros:
+
+1. Un proceso hijo real que escriba el digest en un directorio, en lugar de
+   guardarlo en un diccionario.
+2. Un servidor HTTP en localhost que responda a la comprobación de salud, con
+   timeout de verdad.
+3. Un fallo de salud inducible sin mockear: apagar el servidor y observar qué
+   hace el worker.
+4. Un timeout genuino: un destino que acepte la conexión y nunca responda.
+
+Con eso se ejecutan las cuatro sobre un proceso real. Lo que seguiría siendo
+imposible sin infraestructura es lo que necesita cuenta de terceros: un
+proveedor de nube, credenciales y un entorno compartido por más de una
+máquina.
+
+**El 9 se cierra antes que el 10 y el 11.** Es trabajo pequeño y deja el
+superplan mucho más cerca definished.
 
 ## Corrección de autoría por squash — verificada y purgada
 
