@@ -38,7 +38,7 @@ PATTERNS = (
      "clave privada"),
 )
 
-ALLOWLIST_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".whl", ".sqlite3", ".pyc")
+ALLOWLIST_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".whl", ".sqlite3", ".pyc")
 
 
 def tracked_files(include_all: bool, explicit: list[str]) -> list[str]:

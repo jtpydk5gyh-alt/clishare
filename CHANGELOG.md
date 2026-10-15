@@ -73,6 +73,21 @@ once it leaves alpha.
   checks dependencies, checks state and acquires the leases inside one write
   transaction, so a task is never running without holding what it needs and
   leases are never held by something that is not running.
+- Milestone 11: `Usage` and `BudgetPolicy`. Amounts use `Decimal`, and a cost
+  without a currency or without the date its price was read is refused rather
+  than stored. **Unknown values stay `null` and are excluded from totals, never
+  counted as zero.** `authorize_run` never invents an estimate: with a budget
+  and no estimate it refuses with `estimate_required`, and with an unpriced
+  recorded call it refuses with `usage_incomplete`.
+- `max_agents` is enforced against the active run reservations, so the eleventh
+  agent against a ceiling of ten is refused.
+- A usage record carries request id, project, task, agent, lease and fence, and
+  a test asserts the emitted event contains no prompt, token or provider
+  variable name. The audit export states that retention is not configured.
+- **Fixed:** filtering usage by currency in SQL made an unpriced call vanish
+  from the total, so a budget looked cheaper than reality. Records with no
+  currency are now counted as unknown; records in a different currency are
+  still left out, because those are genuinely unrelated.
 - Milestone 10: `ProviderAuth`. **No provider is eligible for native login**:
   `capabilities` reports `native_login: false` with `reason: "not_reviewed"` and
   `begin` refuses, because the review registry ships empty on purpose and the

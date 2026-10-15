@@ -23,6 +23,8 @@ plan lives in [the main document](superpowers/plans/2026-10-14-cshcli.md).
 | Sandbox | **Not a sandbox.** No CPU, memory, process or network limits. Arbitrary execution stays unimplemented by design |
 | Cross-machine service | Proposed, not yet implemented |
 | Automatic Git integration | `IntegrationQueue` applies a patch in a dedicated worktree, recomputes the base, runs the checks on the composed result and advances the branch only through a compare-and-swap. **Not wired to HTTP or to the runner yet** |
+| Usage and budgets (11) | `Usage.record` with `Decimal`, currency, price date and unit; unknown costs stay `null` and are excluded from totals rather than zeroed. `authorize_run` never invents an estimate and refuses when usage is incomplete. Audit export states that retention is unconfigured |
+| Chaos, restore and release (11) | **Not done.** No chaos drills, no restore, no signed release with checksums |
 | Deployment publish and rollback | Coordination complete, and the four acceptance checks run against a separate process and a real health socket. **No provider is configured and nothing has been published anywhere** |
 | Native direct OAuth | `ProviderAuth` implements PKCE, one-use state, exact loopback redirect and a local store, behind a review registry that is **empty on purpose**. No provider is eligible |
 | Personal data guard | Pre-commit hook and a **required** CI check; refuses personal emails, private relay addresses, user paths and a non-noreply identity. Reads the staged index and fails closed |
@@ -40,7 +42,7 @@ session. Verification used a standard CPython 3.12 installation; the
 interpreter path is machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests -v`
-returned **397 passing tests in 184 seconds**, with 4 skipped: two symbolic link
+returned **423 passing tests in 170 seconds**, with 4 skipped: two symbolic link
 cases on a host that does not grant the privilege, and two PostgreSQL cases
 that need a real server, which does not exist on this machine. The Windows
 junction case runs. Concurrent tests use eleven synchronised threads and, for
