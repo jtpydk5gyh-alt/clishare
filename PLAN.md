@@ -20,7 +20,9 @@ deployments.
 | [README](README.md) | Cómo ejecutar el piloto y sus límites actuales |
 | [Agent rules](AGENTS.md) | Reglas iniciales del repositorio; no está en el remoto público por decisión del owner |
 
-Current owner priority: complete the plan before expanding the implementation.
-The local base already in place is preserved as a starting point. Future
-capabilities in the plan are not considered delivered until their acceptance
-tests pass.
+Current owner priority, as of 15 October 2026: the
+[online plan](docs/PLAN-ONLINE.md). The superplan's remaining work is
+[status](docs/STATUS.md)'s "Still to do" table, which says for each item
+whether it can be done on the machine that writes it. The local base already in
+place is preserved as a starting point. Future capabilities in the plan are not
+considered delivered until their acceptance tests pass.

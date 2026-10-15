@@ -40,6 +40,19 @@ once it leaves alpha.
   noreply form.
 
 ### Added
+- Recorded where the project actually stands: version 0.2.0, 46 commits, 423
+  tests, and a table that says for each remaining item whether it can be done
+  on this machine. The rule the document follows is that what cannot be checked
+  is stated, not implied.
+- `docs/STATUS.md` gained a "What is verified, and what is not" heading, a
+  "Still to do" table, and the working rules that cost something to learn:
+  never `reset --hard` without looking, never weaken a security control so
+  your own code passes it, version after a large change, and update every
+  `.md` rather than the one that changed.
+- The install command the owner asked about is now documented in the README
+  **with its three caveats**: it installs `main` and not a version, it checks
+  nothing, and `cshcli` may not land on your PATH while `py -m cshcli` always
+  works.
 - Milestone 9: `DeployService` and `DeployWorker`. An idempotency key scoped to
   project and environment, enforced by a database constraint rather than a
   Python check, returns the same deployment for the same payload and `409` for a

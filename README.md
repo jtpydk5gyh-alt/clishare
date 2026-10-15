@@ -87,6 +87,35 @@ python -m venv .venv
 On Linux/macOS: `.venv/bin/python -m pip install -e .` and `.venv/bin/cshcli`.
 Packaging uses setuptools; the first install command may download it.
 
+## Install without cloning
+
+```
+py -m pip install "https://github.com/jtpydk5gyh-alt/cshcli/archive/refs/heads/main.zip"
+```
+
+`pip` accepts a zip URL, so this works. Three things to know before treating it
+as the recommended path:
+
+1. **It installs `main`, not a version.** Nothing is pinned, so there is no
+   reproducibility and nothing to go back to if something breaks. It is fine for
+   development and a poor choice for anything else.
+2. **It checks nothing.** No checksum, no signature, no content inspection.
+   That is why a release publishes `SHA256SUMS`, and why
+   `python scripts/release.py` generates one.
+3. **The `cshcli` command may not land on your PATH**, depending on where it
+   installs. `py -m cshcli --help` always works, and is the form to document as
+   the alternative.
+
+The recommended route for normal use is a published release plus its checksum.
+See [releases](docs/RELEASES.md).
+
+The PostgreSQL driver needed by the remote service is an extra, so it never
+comes along with a normal install:
+
+```
+py -m pip install "cshcli[remote]"
+```
+
 ## Create a project and invite someone
 
 Keep the server running in the first terminal. In a second PowerShell:
