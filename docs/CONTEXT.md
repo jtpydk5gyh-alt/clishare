@@ -403,6 +403,39 @@ modalidad documentada. CSHCLI no lee ni exporta tokens de Claude.ai, y no
 implementa proxy de OAuth. Los cuatro ficheros que documentan esto están en
 `docs/PROVIDERS.md`.
 
+## Lo que viene ahora: online, sencillo y autoactualización
+
+Decidido por el propietario el 15 de octubre. El plan completo, con sus
+razones, está en `docs/PLAN-ONLINE.md`. **Nada de eso está implementado
+todavía**, y esa distinción importa más que la lista.
+
+Cuatro decisiones, en orden de ejecución:
+
+1. **`cshcli start` y el almacén local de claves.** Hoy hacen falta cuatro
+   pasos y una variable de entorno antes de hacer nada útil. La simplicidad no
+   es quitar comandos: es que el camino por defecto no requiera saberlos. La
+   clave entra pegada y se guarda con permisos restringidos, porque hoy
+   `$env:OPENAI_API_KEY` queda en el historial de la terminal y en el entorno
+   de cada proceso hijo.
+2. **El comando de instalación documentado**, con sus tres advertencias:
+   instala `main` y no una versión, así que no hay reproducibilidad; no
+   comprueba checksums ni firmas; y el comando `cshcli` puede no quedar en el
+   PATH, mientras que `py -m cshcli` siempre funciona.
+3. **`cshcli update`**, que primero **compara y avisa sin tocar nada**, y solo
+   con `--apply` instala, pidendo que escribas el nombre de la versión y
+   comprobando el checksum antes. Instalar código por sorpresa es mala idea
+   aunque el código sea el nuestro: instalar desde `main` es instalar código
+   sin versionar ni reviews.
+4. **`cshcli serve --remote`**, con HTTPS y PostgreSQL. **Va el último porque
+   es el único que puede quedarse esperando infraestructura**, y aquí no hay
+   servidor, ni Docker, ni WSL, ni PostgreSQL.
+
+Ese cuarto punto comparte el bloqueo del hito 7, así que su veredicto es el
+mismo: se escribe y se revisa, pero **"funciona online" no se declara hasta que
+alguien lo haya levantado y dos personas hayan conectado desde máquinas
+distintas.** Esa frase tiene que poder leerse en el README el día que sea
+cierto, y no antes.
+
 ## 11: un coste desconocido no es un coste cero
 
 La regla del plan para este hito es corta y sostiene el resto: usar `decimal`,

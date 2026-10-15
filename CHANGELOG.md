@@ -73,6 +73,11 @@ once it leaves alpha.
   checks dependencies, checks state and acquires the leases inside one write
   transaction, so a task is never running without holding what it needs and
   leases are never held by something that is not running.
+- `docs/PLAN-ONLINE.md`: the plan for running online, for a first run that
+  needs no instructions, for an install command with its three caveats, and
+  for an update that reports first and only installs on explicit consent with
+  a checksum check. **Nothing in it is implemented yet**, and the document says
+  so in its first paragraph.
 - Milestone 11: `Usage` and `BudgetPolicy`. Amounts use `Decimal`, and a cost
   without a currency or without the date its price was read is refused rather
   than stored. **Unknown values stay `null` and are excluded from totals, never
