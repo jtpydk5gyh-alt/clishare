@@ -53,8 +53,13 @@ Once the session is ready, `cshcli` on its own opens a chat:
 > _
 ```
 
-Type a line, get an answer, type the next one. `/salir`, `/quit` or Ctrl-D
+Type a line, get an answer, type the next one. The loop carries the
+conversation: each turn sends the previous turns, capped at the last 20 so it
+cannot grow without bound. `/limpiar` clears it, `/salir`, `/quit` or Ctrl-D
 leaves. A provider error is printed and the loop continues rather than exiting.
+
+**No provider has been contacted.** The wire format per provider is covered by
+tests against the request body, not against a live API.
 
 For API providers the model identifier is explicit and required, because the
 tool does not guess one. `cshcli --model gpt-4o-mini` sets it for the session;
@@ -289,7 +294,7 @@ python -m compileall -q src tests scripts
 python scripts/cshcli.py --help
 ```
 
-The current Windows run passes 548 tests with 5 explicit skips for unavailable
+The current Windows run passes 558 tests with 5 explicit skips for unavailable
 POSIX symbolic-link/file-permission guarantees and real PostgreSQL. The tests
 use real SQLite, local HTTP, Git, and provider fixtures. The synchronised
 races pit eleven agents from two people against the same resource, memory
@@ -303,11 +308,10 @@ against the commit being merged.
 
 ## Next deliveries
 
-1. A conversational loop that keeps the conversation in context across turns;
-   today each line is an independent query.
-2. Remote service with real HTTPS and PostgreSQL, after concurrency and restore drills pass.
-3. A signed and published release whose wheel and `SHA256SUMS` URLs are exercised end to end.
-4. Windows protection for the local key store beyond ordinary file placement.
-5. Native provider OAuth only after an explicit provider-by-provider eligibility review.
+1. Remote service with real HTTPS and PostgreSQL, after concurrency and restore drills pass.
+2. A signed and published release whose wheel and `SHA256SUMS` URLs are exercised end to end.
+3. Windows protection for the local key store beyond ordinary file placement.
+4. Native provider OAuth only after an explicit provider-by-provider eligibility review.
+5. The conversation carried between turns, verified against at least one live provider.
 
 The plan develops each delivery with contracts, tests, and closure conditions.

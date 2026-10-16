@@ -15,7 +15,7 @@ says so and the reason is in [OPERATIONS.md](OPERATIONS.md),
 | Capability | Observed status |
 | --- | --- |
 | Runnable CLI from source | Help and 0.5.0 version verified |
-| Conversational entry point | `cshcli` on its own opens a chat loop when the session is ready, and runs the first-run menu when it is not. `/salir`, `/quit` and Ctrl-D leave; a provider error prints and the loop continues. `cshcli chat "text"` stays a single query |
+| Conversational entry point | `cshcli` on its own opens a chat loop when the session is ready, and runs the first-run menu when it is not. Each turn carries the previous ones, capped at 20; `/limpiar` clears, `/salir`, `/quit` and Ctrl-D leave. A provider error prints and the loop continues. `cshcli chat "text"` stays a single query. Request bodies per provider are tested; **no provider has been contacted** |
 | Update check | `cshcli update` compares and reports without changing anything. `--apply` needs the version typed and verifies the checksum first. Tested with a fake transport; **no real download has been performed** |
 | First run without instructions | `cshcli start` is a two-option menu that performs the setup: a private session, or joining with an invitation code or creating a shared project. No server is started first: the coordinator is implicit. `cshcli key set` stores a provider key outside the environment. Tested end to end through the real CLI entry point |
 | Coordinator lifetime | A command with no reachable coordinator runs one inside its own process on an ephemeral port and closes it on exit. Identity, current project and token live in `.cshcli/session.json`, so later commands need no `--url` and no token. Two embedded coordinators over one database are tested. `cshcli serve` still provides a long-lived one |
@@ -56,7 +56,7 @@ Observed environment: Windows with CPython 3.12.14. The interpreter path is
 machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests`
-returned **548 passing tests in 312.955 seconds**, with 5 skipped: two symbolic
+returned **558 passing tests in 339.138 seconds**, with 5 skipped: two symbolic
 link cases on a host that does not grant the privilege, two PostgreSQL cases
 that need a real server which does not exist on this machine, and one POSIX file
 permission case that does not apply on Windows. The Windows junction case runs.
