@@ -21,6 +21,11 @@ coordinator answers over TLS.
   and then **verifies the nine tables exist**. A file whose text contains `DROP`
   is refused outright.
 - `scripts/tls_certificate.py`, a self-signed certificate and key.
+- **`release.py` signs by itself.** With `CSHCLI_SIGNING_KEY` pointing at the
+  owner's key it finds `minisign`, signs `SHA256SUMS` and checks that the
+  signature was written. Without a key the release still builds and says so;
+  `--require-signature` refuses instead. Signing `SHA256SUMS` and not the wheel
+  is deliberate: one signature covers every artefact it lists.
 - `cshcli.remote_server`. `serve --remote` now binds, wraps the socket in TLS and
   answers `/healthz` with the live database state. Previously it validated the
   configuration and refused to start.
