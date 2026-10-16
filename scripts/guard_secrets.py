@@ -28,6 +28,33 @@ PATTERNS = (
 
 ALLOWLIST_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf")
 
+CREDENTIAL_NAMES = {
+    ".env", ".netrc", ".netrc._ml", ".npmrc", ".pypirc", ".htpasswd",
+    "credentials.json", "known_hosts", "id_rsa", "id_dsa", "id_ecdsa",
+    "id_ed25519", "shadow",
+}
+CREDENTIAL_SUFFIXES = {
+    ".pem", ".key", ".p12", ".pfx", ".crt", ".keystore", ".asc", ".ppk", ".jks",
+}
+CREDENTIAL_PREFIXES = ("credentials.", "service-account")
+CREDENTIAL_ENDS = ("_PRIVATE.md", "_private.md")
+CREDENTIAL_STARTS_WITH = (".env.",)
+CREDENTIAL_LABEL = "fichero de credenciales por su nombre"
+
+
+def is_credential_file(path: str) -> bool:
+    name = path.replace("\\", "/").rsplit("/", 1)[-1]
+    if name in CREDENTIAL_NAMES:
+        return True
+    if name != ".env.example" and any(name.startswith(prefix)
+                                       for prefix in CREDENTIAL_STARTS_WITH):
+        return True
+    if Path(name).suffix.lower() in CREDENTIAL_SUFFIXES:
+        return True
+    if name.endswith(CREDENTIAL_ENDS):
+        return True
+    return name.lower().startswith(CREDENTIAL_PREFIXES)
+
 
 def tracked_files(include_all: bool, explicit: list[str]) -> list[str]:
     if explicit:
@@ -64,6 +91,9 @@ def scan(paths: list[str], revision: str) -> tuple[list[tuple[str, int, str, str
             continue
         if is_exempt(name):
             continue
+        if is_credential_file(name):
+            findings.append((name, 0, CREDENTIAL_LABEL, ""))
+            continue
         text = committed_text(name, revision) if revision else _read_worktree(name)
         if text is None:
             unreadable.append(name)
@@ -95,6 +125,8 @@ def identity_findings() -> list[str]:
 
 
 def redact_sample(sample: str) -> str:
+    if not sample:
+        return "sin contenido que mostrar"
     visible = len(sample) - len(sample.lstrip("*_"))
     masked = "*" * min(visible, 4)
     return f"{masked} ({len(sample)} caracteres)"
