@@ -10,36 +10,35 @@ Este bloque prevalece sobre cualquier fotografía histórica contradictoria que
 permanezca más abajo. No reinterpretar los estados antiguos como el estado
 actual.
 
-- `origin/main` está en `66890f7`, squash del **PR #75**. Es la versión
-  **0.9.0** y tiene **69 commits**. El PR pasó **14 checks**.
-- La rama local activa es `fix/guard-rechaza-por-nombre`. Solo hay un worktree
-  registrado, el principal. No hay agentes trabajando ni otro worktree que
-  rescatar.
-- Hay siete cambios preparados y todavía **no hay commit, push ni PR** para
-  esta rama: `scripts/guard_secrets.py`, `tests/test_guard_names.py`,
-  `README.md`, `CHANGELOG.md`, `docs/CONTEXT.md`, `docs/STATUS.md` y
-  `docs/USAGE.md`.
-- El guard ya rechaza credenciales por nombre antes de intentar leerlas. Cubre
-  los nombres y sufijos sensibles que el chat también rechaza, conserva
+- `origin/main` está en `ced7d16`, squash del **PR #76**. Es la versión
+  **0.9.0** y tiene **70 commits**. El PR pasó **14 checks** en verde y se
+  fusionó por squash sin `--admin`.
+- La rama local activa es `main`, sincronizada con el remoto, con el árbol
+  limpio. Solo hay un worktree registrado, el principal. No hay agentes
+  trabajando ni otro worktree que rescatar.
+- El guard ya rechaza credenciales **por nombre** antes de intentar leerlas, y
+  cubre los mismos nombres y sufijos que el chat rechaza. Conserva
   `.env.example` y evita el falso positivo `credential_manager.py`.
-- `tests/test_guard_names.py` prueba nombres, sufijos, un repositorio Git real,
-  un almacén binario y la concordancia entre el guard y el chat.
-- La comprobación real rechazó los cuatro nombres sensibles ensayados y dejó
-  pasar un archivo ordinario. No se registraron valores de credenciales.
+  `tests/test_guard_names.py` ata las dos listas para que no vuelvan a
+  separarse.
+- La regla de cero comentarios y docstrings se cumple ya en todo el árbol:
+  cero docstrings y un único comentario, el shebang de
+  `scripts/push_rewritten_main.py`.
 - La última suite completa terminó con **700 pruebas verdes y 26 omitidas con
   motivo en 352.249 s**. Las 20 pruebas que dependen de PostgreSQL también se
-  ejecutaron contra PostgreSQL 16.2 real y pasaron.
-- `tests/test_workflow.py` todavía contiene tres líneas de comentarios
-  explicativos sobre runtimes retirados. Deben eliminarse antes del commit para
-  cumplir la regla del propietario de cero comentarios y docstrings
-  explicativos. No se deben eliminar las constantes ni debilitar las pruebas.
-- Después de esa limpieza hay que ejecutar
-  `python -m unittest tests.test_workflow tests.test_guard_names tests.test_guard`,
-  la auditoría de comentarios/docstrings y `python scripts/guard_secrets.py` en
-  modo staged. Después: commit, push, PR, CI verde y squash a `main`, sin
-  force-push.
-- Mensaje de commit previsto: `fix(guard): rechazar credenciales por nombre y
-  mantener las dos listas alineadas`.
+  ejecutaron contra PostgreSQL 16.2 real y pasaron. El CI del PR #76 repitió la
+  suite en Windows y Linux × Python 3.11, 3.12 y 3.13: **14 checks en verde**.
+
+**Un defecto real que encontró la auditoría, ya corregido:**
+`tests/test_validate_lease.py` **empezaba por un BOM (U+FEFF) commiteado en
+`main` desde el PR #42** (`0877cf1`). Era el único fichero con BOM de los 122
+trackeados. No rompía nada de lo que se ejecutaba: el importador de Python
+descarta el BOM, `compileall` pasaba y los tests lo importaban igual. Rompía
+cualquier herramienta que lo leyera con `encoding="utf-8"` y lo parseara, que es
+justo lo que le pasó a la auditoría de comentarios. Se quitaron los tres bytes y
+`tests/test_encoding.py` lee ahora cada fichero trackeado desde el índice y falla
+si alguno vuelve a empezar por un BOM o deja de parsear. Comprobado en las dos
+direcciones: con el BOM presente lo detecta y lo nombra; ya retirado pasa.
 
 El único bloqueo que requiere una decisión del propietario es la clave privada
 de firma. `scripts/release.py`, `minisign` y `CSHCLI_SIGNING_KEY` están
@@ -327,7 +326,7 @@ que se sincronice. El procedimiento está en `docs/RELEASES.md`.
 ## Dónde está el proyecto hoy
 
 **Versión 0.9.0, construida localmente con checksum; no publicada ni firmada.**
-61 commits en `origin/main`, todos con noreply. La suite local actual y sus
+70 commits en `origin/main`, todos con noreply. La suite local actual y sus
 omisiones justificadas se registran abajo. CI verde en Windows y Linux × Python
 3.11, 3.12 y 3.13. Un solo ruleset, `main-integrity`, con `Personal data
 guard` como control obligatorio.
@@ -355,10 +354,10 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | --- | --- |
 | Repositorio | `jtpydk5gyh-alt/cshcli`, público, licencia MIT |
 | Versión | `0.9.0`, artefacto local con `dist/SHA256SUMS`; no publicado ni firmado |
-| Rama por defecto | `main`, 61 commits en `origin/main`, todos con la noreply de GitHub |
+| Rama por defecto | `main`, 70 commits en `origin/main`, todos con la noreply de GitHub |
 | Módulo Python | `cshcli`, 24 módulos más `__init__` y `__main__`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
-| PRs mergeadas | 67, sin `--admin`: el control obligatorio se respeta |
+| PRs mergeadas | 76, sin `--admin`: el control obligatorio se respeta |
 | Pruebas | 700 verdes; 26 omitidas con motivo: 20 necesitan `CSHCLI_REMOTE_DSN` y **se ejecutaron** contra PostgreSQL 16.2 |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
