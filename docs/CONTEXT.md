@@ -10,9 +10,14 @@ Este bloque prevalece sobre cualquier fotografía histórica contradictoria que
 permanezca más abajo. No reinterpretar los estados antiguos como el estado
 actual.
 
-- `origin/main` está en `6c930d8`, squash del **PR #77**. Es la versión
-  **0.9.0** y tiene **71 commits**. Los dos últimos PRs, el **#76** y el **#77**,
-  pasaron **14 checks** en verde y se fusionaron por squash sin `--admin`.
+- `origin/main` está en `6c5ce92`, squash del **PR #78**. Es la versión
+  **0.9.0** y tiene **72 commits**. Los tres últimos PRs, el **#76**, el **#77**
+  y el **#78**, pasaron **14 checks** en verde cada uno y se fusionaron por
+  squash sin `--admin`.
+- Ese SHA es el del **último squash fusionado en el momento de escribir esta
+  línea**. Envejece con la siguiente fusión: antes de fiarse de él, comprobar
+  `git log -1 --oneline` y `git rev-list --count origin/main`. Lo que no
+  envelhece es lo de abajo.
 - La rama local está sincronizada con el remoto y el árbol está limpio. Solo hay
   un worktree registrado, el principal. No hay agentes trabajando ni otro
   worktree que rescatar.
@@ -326,7 +331,7 @@ que se sincronice. El procedimiento está en `docs/RELEASES.md`.
 ## Dónde está el proyecto hoy
 
 **Versión 0.9.0, construida localmente con checksum; no publicada ni firmada.**
-70 commits en `origin/main`, todos con noreply. La suite local actual y sus
+72 commits en `origin/main`, todos con noreply. La suite local actual y sus
 omisiones justificadas se registran abajo. CI verde en Windows y Linux × Python
 3.11, 3.12 y 3.13. Un solo ruleset, `main-integrity`, con `Personal data
 guard` como control obligatorio.
@@ -354,10 +359,10 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | --- | --- |
 | Repositorio | `jtpydk5gyh-alt/cshcli`, público, licencia MIT |
 | Versión | `0.9.0`, artefacto local con `dist/SHA256SUMS`; no publicado ni firmado |
-| Rama por defecto | `main`, 70 commits en `origin/main`, todos con la noreply de GitHub |
+| Rama por defecto | `main`, 72 commits en `origin/main`, todos con la noreply de GitHub |
 | Módulo Python | `cshcli`, 24 módulos más `__init__` y `__main__`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
-| PRs mergeadas | 76, sin `--admin`: el control obligatorio se respeta |
+| PRs mergeadas | 78, sin `--admin`: el control obligatorio se respeta |
 | Pruebas | 703 verdes; 26 omitidas con motivo: 20 necesitan `CSHCLI_REMOTE_DSN` y **se ejecutaron** contra PostgreSQL 16.2 |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
