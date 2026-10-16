@@ -27,7 +27,7 @@ and AI accounts while sharing decisions and reserving files.
 
 ## Status
 
-**Local pilot, version 0.6.0.** The coordinator, the CLI, the coordination
+**Local pilot, version 0.7.0.** The coordinator, the CLI, the coordination
 store and the publication gate are implemented and covered by tests that run on
 Linux and Windows with Python 3.11, 3.12 and 3.13.
 
@@ -71,7 +71,7 @@ python scripts/cshcli.py start
 ```
 
 ```text
-  CSHCLI 0.6.0 — coordinas agentes con tus propias cuentas
+  CSHCLI 0.7.0 — coordinas agentes con tus propias cuentas
 
   1) Sesión           Trabaja por tu cuenta
   2) Unirme o crear   Un proyecto compartido con otra persona
@@ -89,7 +89,7 @@ are kept in `.cshcli/session.json`, so later commands need no `--url` and no
 token — and `cshcli` on its own opens a chat:
 
 ```text
-  ana · demo · openai    /salir para salir
+  ana · demo · openai    /ver <archivo> para leer, /limpiar, /salir para salir
 
 > _
 ```
@@ -102,6 +102,11 @@ the team already decided. `cshcli chat --provider openai --model gpt-4o-mini
 providers on purpose: the tool does not guess one. **No provider has been
 contacted**: the request body per provider is covered by tests, not by a live
 API.
+
+The agent also starts knowing what exists: the first question carries an index
+of the folder the CLI was opened in, and `/ver src/cshcli/cli.py` reads one file
+into the conversation. Reading uses the same path checks as the mediated runner,
+so nothing outside the folder is reachable and no command is ever run.
 
 Every decision lives in `.cshcli/coordinator.sqlite3`, so the coordinator that
 made it does not need to keep running. That folder is ignored by Git. The pilot

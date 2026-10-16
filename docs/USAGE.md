@@ -4,7 +4,7 @@ AI CLI with personal credentials and shared project coordination. The idea: you
 create a project, invite other people, and everyone works with their own agents
 and AI accounts while sharing decisions and reserving files.
 
-**Status: local 0.6.0 pilot.** The CLI, local HTTP coordinator, SQLite, projects,
+**Status: local 0.7.0 pilot.** The CLI, local HTTP coordinator, SQLite, projects,
 invitations, versioned memory, leases, text-based AI adapters, mediated runner,
 automatic worktrees, task DAG, local integration queue, deployment coordination,
 usage and budgets are in place. The remote multi-user service and a real cloud
@@ -27,7 +27,7 @@ python scripts/cshcli.py start
 rest:
 
 ```text
-  CSHCLI 0.6.0 — coordinas agentes con tus propias cuentas
+  CSHCLI 0.7.0 — coordinas agentes con tus propias cuentas
 
   1) Sesión           Trabaja por tu cuenta
   2) Unirme o crear   Un proyecto compartido con otra persona
@@ -48,7 +48,7 @@ exit. Your name, current project, provider and token are kept in
 Once the session is ready, `cshcli` on its own opens a chat:
 
 ```text
-  ana · demo · openai    /salir para salir
+  ana · demo · openai    /ver <archivo> para leer, /limpiar, /salir para salir
 
 > _
 ```
@@ -64,9 +64,36 @@ Contexto compartido del proyecto 'demo':
 - estilo: PEP8
 ```
 
-The block is capped at 8000 characters. `/limpiar` clears the conversation and
-lets the context reach the next question again. `/salir`, `/quit` or Ctrl-D
-leaves. A provider error is printed and the loop continues rather than exiting.
+The first question also carries the index of the folder you opened the CLI in,
+so the agent starts knowing what exists without being told:
+
+```text
+Archivos del proyecto actual (139 de 1583; 1444 omitidos):
+- README.md
+- docs/STATUS.md
+- src/cshcli/cli.py
+Usa /ver <ruta> para ver uno.
+```
+
+The index lists the first files that fit a 4000 character budget, README and
+`docs/`, `src/`, `tests/` first. `.git`, `__pycache__`, `node_modules`, `dist`
+and the common binary suffixes are left out.
+
+`/ver <ruta>` reads one file and puts it into the conversation as a fenced
+block, so the agent can work on the real thing:
+
+```text
+> /ver src/cshcli/cli.py
+```
+
+Reading goes through the same path checks the mediated runner uses: absolute
+paths, `..`, Git metadata, symbolic links, Windows junctions and hard links are
+refused, and a file that is not text is refused rather than sent as noise.
+Nothing outside the folder is reachable, and no command is ever executed.
+
+The memory block is capped at 8000 characters. `/limpiar` clears the conversation and lets the context reach the next question
+again. `/salir`, `/quit` or Ctrl-D leaves. A provider error is printed and the
+loop continues rather than exiting.
 
 The context travels as part of the first question, not as a separate system
 message, because each provider spells that differently and none of it has been
