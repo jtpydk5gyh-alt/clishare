@@ -198,16 +198,23 @@ Cerrado el 16 de octubre.
 **La firma de la release, y es una decisión del propietario, no un bloqueo de
 infraestructura.**
 
-El mecanismo **está instalado y probado**. `minisign` 0.12, verificado contra
-la clave pública que publica el propio proyecto
-(`RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3`) **antes de
-ejecutarlo**. Se generó una clave de descarte, se firmó `SHA256SUMS`, se
-verificó y **se borró**: el camino está probado sin crear una identidad en nombre
-de nadie.
+**El mecanismo está instalado, automatizado y probado. Falta una línea.**
 
-Lo único que falta es que el propietario decida si genera su clave. El
-procedimiento completo está en `docs/RELEASES.md`. La clave privada es suya y no
-debe estar nunca en el repositorio ni en una copia que se sincronice.
+- `minisign` 0.12, **verificado contra la clave pública que publica el propio
+  proyecto** antes de ejecutarlo.
+- `scripts/release.py` firma solo: encuentra el firmante, firma `SHA256SUMS` y
+  comprueba que la firma existe. Comprobado con una clave de descarte que se
+  borró después: la firma verificar, sin clave el release se construye y **lo
+  dice**, y con `--require-signature` se niega con código 1.
+- Sin esos cambios eran tres comandos que alguien podia olvidar.
+
+```powershell
+$env:CSHCLI_SIGNING_KEY = "…tu-clave.key"
+python scripts/release.py
+```
+
+La clave privada es suya y no debe estar nunca en el repositorio ni en una copia
+que se sincronice. El procedimiento está en `docs/RELEASES.md`.
 
 ## Dónde está el proyecto hoy
 
