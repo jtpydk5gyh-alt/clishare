@@ -10,7 +10,7 @@ from cshcli.cli import main
 from cshcli.client import Client
 from cshcli.errors import DomainError
 from cshcli.local import EmbeddedCoordinator, connect
-from cshcli.onboarding import Keyring, run_wizard
+from cshcli.onboarding import Keyring, run_loop, run_wizard
 from cshcli.server import make_server
 from cshcli.session import Session
 
@@ -122,9 +122,12 @@ class WizardTests(unittest.TestCase):
 
     def test_an_existing_key_is_not_asked_again(self):
         self.keyring.set("anthropic", "sk-already")
-        self.run_with(["1", "ana", "", "openai"], ["sk-test"])
-        self.assertIn("Ya tienes una clave de anthropic.", self.text())
+        _, reader = self.run_with(["1", "ana", "", "openai"], ["sk-test"])
+        self.assertNotIn("¿Qué proveedor usas?", "".join(reader.prompts))
+        self.assertIn("Proveedor: anthropic.", self.text())
+        self.assertEqual(self.session.provider, "anthropic")
         self.assertEqual(self.keyring.get("anthropic"), "sk-already")
+        self.assertIsNone(self.keyring.get("openai"))
 
     def test_a_ready_session_does_not_ask_anything(self):
         self.run_with(["1", "ana", "equipo", "openai"], ["sk-test"])
@@ -224,6 +227,50 @@ class SessionTests(unittest.TestCase):
         self.assertFalse(self.session.forget())
 
 
+class LoopTests(unittest.TestCase):
+    def setUp(self):
+        self.output = io.StringIO()
+        self.seen = []
+
+    def ask(self, provider, model, prompt):
+        self.seen.append((provider, model, prompt))
+        return f"respuesta a {prompt}"
+
+    def failing(self, provider, model, prompt):
+        raise DomainError(401, "api_key_missing", "Configura la clave.")
+
+    def test_a_line_is_sent_and_the_answer_printed(self):
+        code = run_loop("openai", "gpt-4o-mini", self.ask,
+                        reader=Script(["hola"]), out=self.output.write)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.seen, [("openai", "gpt-4o-mini", "hola")])
+        self.assertIn("respuesta a hola", self.output.getvalue())
+
+    def test_slash_exit_leaves_the_loop(self):
+        code = run_loop("openai", "m", self.ask,
+                        reader=Script(["hola", "/salir", "nunca"]), out=self.output.write)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.seen), 1, "nothing is sent after /salir")
+
+    def test_blank_lines_are_ignored(self):
+        code = run_loop("openai", "m", self.ask,
+                        reader=Script(["", "   ", "hola", "/quit"]), out=self.output.write)
+        self.assertEqual(code, 0)
+        self.assertEqual([item[2] for item in self.seen], ["hola"])
+
+    def test_end_of_input_leaves_without_an_answer(self):
+        code = run_loop("openai", "m", self.ask,
+                        reader=Script(["hola"]), out=self.output.write)
+        self.assertEqual(code, 0)
+        self.assertIn("respuesta a hola", self.output.getvalue())
+
+    def test_a_provider_error_is_reported_and_the_loop_continues(self):
+        code = run_loop("openai", "m", self.failing,
+                        reader=Script(["uno", "dos", "/salir"]), out=self.output.write)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.output.getvalue().count("[api_key_missing]"), 2)
+
+
 class CliStartTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -270,6 +317,31 @@ class CliStartTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("Para invitar a alguien, dale este código:",
                       self.output.getvalue())
+
+    def test_a_ready_session_opens_the_chat_instead_of_the_wizard(self):
+        self.run_main(["start"], ["1", "ana", "equipo", "openai"], ["sk-test"])
+        self.output = io.StringIO()
+        with mock.patch("cshcli.cli.providers.chat",
+                        return_value="respuesta") as chat, \
+             mock.patch("builtins.input", side_effect=["hola", "/salir"]), \
+             mock.patch("sys.stdout", self.output):
+            code = main([])
+        self.assertEqual(code, 0)
+        self.assertEqual(chat.call_args[0], ("openai", None, "hola"))
+        printed = self.output.getvalue()
+        self.assertIn("ana · equipo · openai", printed)
+        self.assertIn("respuesta", printed)
+        self.assertNotIn("Elige 1 o 2", printed)
+
+    def test_chat_with_a_prompt_stays_a_single_query(self):
+        self.run_main(["start"], ["1", "ana", "equipo", "openai"], ["sk-test"])
+        self.output = io.StringIO()
+        with mock.patch("cshcli.cli.providers.chat", return_value="una respuesta") as chat, \
+             mock.patch("builtins.input", side_effect=AssertionError("no debe leer")), \
+             mock.patch("sys.stdout", self.output):
+            code = main(["chat", "--model", "gpt-4o-mini", "hola"])
+        self.assertEqual(code, 0)
+        self.assertEqual(chat.call_args[0], ("openai", "gpt-4o-mini", "hola"))
 
     def test_a_non_interactive_run_reports_it_instead_of_hanging(self):
         errors = io.StringIO()

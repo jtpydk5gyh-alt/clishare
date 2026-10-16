@@ -27,7 +27,7 @@ and AI accounts while sharing decisions and reserving files.
 
 ## Status
 
-**Local pilot, version 0.4.0.** The coordinator, the CLI, the coordination
+**Local pilot, version 0.5.0.** The coordinator, the CLI, the coordination
 store and the publication gate are implemented and covered by tests that run on
 Linux and Windows with Python 3.11, 3.12 and 3.13.
 
@@ -71,7 +71,7 @@ python scripts/cshcli.py start
 ```
 
 ```text
-  CSHCLI 0.4.0 — coordinas agentes con tus propias cuentas
+  CSHCLI 0.5.0 — coordinas agentes con tus propias cuentas
 
   1) Sesión           Trabaja por tu cuenta
   2) Unirme o crear   Un proyecto compartido con otra persona
@@ -84,12 +84,19 @@ whether you have an invitation code: with one you join someone else's project,
 without one you create yours and get a code to share.
 
 When no coordinator is reachable, every command starts one inside its own
-process and closes it on exit. Your name, current project and token are kept in
-`.cshcli/session.json`, so later commands need no `--url` and no token:
+process and closes it on exit. Your name, current project, provider and token
+are kept in `.cshcli/session.json`, so later commands need no `--url` and no
+token — and `cshcli` on its own opens a chat:
 
-```powershell
-python scripts/cshcli.py project list
+```text
+  ana · demo · openai    /salir para salir
+
+> _
 ```
+
+`/salir`, `/quit` or Ctrl-D leaves the loop. `cshcli chat --provider openai
+--model gpt-4o-mini "one question"` stays a single query. The model identifier
+is explicit for API providers on purpose: the tool does not guess one.
 
 Every decision lives in `.cshcli/coordinator.sqlite3`, so the coordinator that
 made it does not need to keep running. That folder is ignored by Git. The pilot
@@ -321,7 +328,7 @@ python scripts/cshcli.py --help
 python scripts/guard_secrets.py --all
 ```
 
-The current Windows run passes 541 tests with 5 explicit skips for unavailable
+The current Windows run passes 548 tests with 5 explicit skips for unavailable
 POSIX symbolic-link/file-permission guarantees and real PostgreSQL. The tests
 use real SQLite, local HTTP, Git, and provider fixtures. The synchronised
 races pit eleven agents from two people against the same resource, memory
@@ -347,8 +354,8 @@ means and for the limits CI does not yet cover.
 
 ## Next deliveries
 
-1. **A conversational `cshcli` loop**, so a ready session drops straight into
-   chat instead of naming the next command.
+1. **Conversation that carries context across turns.** The loop sends each line
+   as an independent query today.
 2. **A remote coordinator.** `cshcli serve --remote` over HTTPS with PostgreSQL
    on a private network. **Not available yet and not claimed to be.**
 3. A real PostgreSQL concurrency and restore drill, plus deployment against a
