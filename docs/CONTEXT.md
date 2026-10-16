@@ -125,6 +125,22 @@ Tampoco está: una cadena de confianza pública —el certificado es autofirmado
 dura 30 días—, una segunda máquina, ni un restore hecho mientras otra máquina
 sirve tráfico.
 
+## El CI corria sobre un runtime retirado
+
+`actions/checkout@v4` y `actions/setup-python@v5` apuntan a **Node 20**, que
+llego a su fin en abril de 2026 y que GitHub elimino de los runners durante el
+verano de 2026. No rompio nada porque GitHub los ejecutaba igualmente sobre
+Node 24, pero cada job imprimia un aviso, y cuando la retirada sea completa el
+CI caera sin avisar.
+
+Ahora el workflow usa `actions/checkout@v7` y `actions/setup-python@v7`, que
+son las versiones que documenta el propio Marketplace y que ya son Node 24.
+`tests/test_workflow.py` falla si alguna accion vuelve a una mayor retirada, si
+alguna deja de fijarse a una mayor, y comprueba que la matriz de Python y el
+guard siguen intactos.
+
+Comprobado contra las paginas de releases de ambos proyectos, no de memoria.
+
 ## El worktree del agente de auditoría — cerrado
 
 `~/.codex/worktrees/security-audit/clishare`, rama `audit/security-and-integrity`,
