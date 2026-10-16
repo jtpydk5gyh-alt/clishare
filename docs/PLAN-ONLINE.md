@@ -39,8 +39,32 @@ salir. `.cshcli/session.json` guarda nombre, proyecto y token, de modo que los
 comandos siguientes no necesitan `--url` ni `CSHCLI_TOKEN`. `cshcli serve` sigue
 existiendo para un coordinador compartido, y `--url`/`CSHCLI_URL` lo seleccionan.
 
-Lo que **no** está hecho es el bucle conversacional: escribir `cshcli` con una
-sesión lista todavía no abre un chat. Ese es el siguiente paso de simplicidad.
+El bucle conversacional también está hecho: escribir `cshcli` con una sesión
+lista abre un chat, la conversación se recuerda entre turnos y la primera
+pregunta lleva la memoria compartida del proyecto.
+
+### Paso 1.5 — Que el chat sepa del proyecto donde se abrió — hecho
+
+Falta para lo que se pidió en el punto 2: un chat que hable con alguien **sobre
+el trabajo de esa persona**. La primera pregunta lleva ahora un índice de los
+archivos de la carpeta desde la que se abrió el CLI, y `/ver <ruta>` mete un
+archivo entero en la conversación.
+
+Las tres decisiones que importan aquí:
+
+1. **El índice es la carpeta actual, no el proyecto del coordinador.** Quien
+   escribe `cshcli` dentro de su repositorio quiere que el agente hable de ese
+   repositorio, no de una lista de nombres de archivo guardados en SQLite.
+2. **Leer reutiliza `Workspace`.** Es el mismo resolvedor que usa el runner
+   mediado: rutas absolutas, `..`, metadatos de Git, symlinks, junctions y hard
+   links se rechazan igual que al escribir. No se ha creado una segunda puerta.
+3. **No se ejecuta nada.** El chat lee; no corre comandos. Un agente que abre
+   una puerta de ejecución aquí sería un sandbox nuevo, y el sandbox sigue sin
+   existir.
+
+Lo que **no** se ha hecho, y sigue pendiente de una decisión: que el agente
+*pueda cambiar* un archivo. Eso necesita la puerta de publicación y un
+concepto de parche, no una función de lectura.
 
 ### Paso 2 — La web
 
@@ -143,6 +167,7 @@ de `main` se documenta como la vía de quien quiere lo último.
 | # | Paso | Por qué en este orden | Estado |
 | --- | --- | --- | --- |
 | 1 | `cshcli start` y el almacén local de claves | Sin esto, lo demás sigue siendo difícil. Es el que más uso cambia | **Hecho** |
+| 1.5 | El chat bucle, con memoria y con el índice del proyecto abierto | Sin esto el chat es un toy: empieza de cero y no sabe de qué habla | **Hecho** |
 | 2 | El comando de instalación documentado, con sus tres advertencias | Es la puerta de entrada y hoy no está documentado | **Hecho**, en el README |
 | 3 | `cshcli update`, primero avisando y luego con `--apply` | Depende del 1 y del 2: sin almacén y sin checksums, actualizar es a ciegas | **Hecho** |
 | 4 | `cshcli serve --remote` con HTTPS y PostgreSQL | Es lo más grande y lo único que necesita una máquina. Va último porque es el que puede quedarse esperando infraestructura | **Parcial.** El comando existe y **se niega a arrancar** sin TLS y sin DSN. Levantar PostgreSQL queda pendiente |

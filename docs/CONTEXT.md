@@ -1,12 +1,58 @@
 # Contexto del proyecto — CSHCLI
 
-Resumen del estado real, verificado contra `origin/main` el 15 de octubre
+Resumen del estado real, verificado contra `origin/main` el 16 de octubre
 de 2026. Este documento reemplaza a la memoria de sesión para que cualquier
 agente pueda orientarse sin releer la conversación.
 
+## Última tranche: el chat conoce el proyecto — 0.7.0
+
+Cerrada sobre `529f8f9`, en la rama `feat/chat-conoce-el-proyecto`. Entró por
+PR con CI verde y squash, como los demás.
+
+Qué aporta, en cuatro archivos y tres sitios de cableado:
+
+- `src/cshcli/knowledge.py` es nuevo. `index_text` recorre la carpeta actual y
+  devuelve los archivos que caben en 4000 caracteres, README y `docs/`, `src/`,
+  `tests/` primero, declarando cuántos se quedaron fuera. `note_text` lee un
+  archivo y lo devuelve como bloque delimitado, con el contenido recortado para
+  que el **mensaje completo** quepa en el presupuesto.
+- `run_loop` acepta un `note` opcional y reconoce `/ver`. Sin lector detrás,
+  `/ver` se rechaza en vez de mandarse al proveedor como si fuera una pregunta.
+- `_chat_loop` compone el contexto con la memoria **y** el índice, y entrega el
+  lector. Un error de lectura del disco deja el contexto vacío y el chat
+  arranca igual.
+
+**Las tres decisiones, con su razón:**
+
+1. **El índice es la carpeta desde la que se abrió el CLI**, no el proyecto
+   guardado en el coordinador. Quien escribe `cshcli` dentro de su repositorio
+   quiere que el agente hable de ese repositorio.
+2. **Leer reutiliza `Workspace`.** El runner ya rechaza rutas absolutas, `..`,
+   metadatos de Git, symlinks, junctions y hardlinks; un resolvedor nuevo para
+   el chat sería una puerta nueva con el mismo nombre y un test menos detrás.
+3. **El chat lee y no ejecuta.** Abrir una puerta de ejecución aquí sería un
+   sandbox nuevo, y el sandbox sigue sin existir. Por eso `/ver` solo lee.
+
+**Lo que no se ha hecho, y sigue siendo una decisión del propietario:** que el
+agente pueda **cambiar** un archivo. Eso necesita la puerta de publicación y un
+concepto de parche, no una función de lectura. Y nada de esto está probado
+contra una API real: que el modelo aproveche el índice es suyo, no medido aquí.
+
+**Un efecto secundario que conviene conocer:** el índice lista
+`docs/GITHUB_SUPPORT_TICKET.md`, que está sin trackear y contiene un dato
+privado. `/ver` podría leerlo y mandarlo al proveedor. No es una escalada de
+privilegios — el proceso ya puede leer ese archivo — pero mientras ese ticket no
+se decida, está a un comando de distancia de salir de la máquina.
+
+Verificación: `605` pruebas verdes y `7` omitidas con motivo en
+`332.530 s`, con `PYTHONPATH=src`. Los 7 omitidos son cuatro casos de symlink
+que esta máquina no concede, dos de PostgreSQL que no existen aquí y uno de
+permisos POSIX que no aplica en Windows; los casos de junction de Windows sí
+corren. `compileall`, el guard y la auditoría AST de docstrings (`[]`) pasan.
+
 ## Dónde está el proyecto hoy
 
-**Versión 0.6.0, construida localmente con checksum; no publicada ni firmada.**
+**Versión 0.7.0, construida localmente con checksum; no publicada ni firmada.**
 52 commits en `origin/main`, todos con noreply. La suite local actual y sus
 omisiones justificadas se registran abajo. CI verde en Windows y Linux × Python
 3.11, 3.12 y 3.13. Un solo ruleset, `main-integrity`, con `Personal data
@@ -34,12 +80,12 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | Dato | Valor |
 | --- | --- |
 | Repositorio | `jtpydk5gyh-alt/cshcli`, público, licencia MIT |
-| Versión | `0.6.0`, artefacto local con `dist/SHA256SUMS`; no publicado ni firmado |
+| Versión | `0.7.0`, artefacto local con `dist/SHA256SUMS`; no publicado ni firmado |
 | Rama por defecto | `main`, 52 commits en `origin/main`, todos con la noreply de GitHub |
-| Módulo Python | `cshcli`, 21 módulos, comando `cshcli`, script `scripts/cshcli.py` |
+| Módulo Python | `cshcli`, 24 módulos más `__init__` y `__main__`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 58, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 581 verdes; 5 omitidas: 2 por symlink, 2 por no haber PostgreSQL y 1 permiso POSIX en Windows |
+| Pruebas | 605 verdes; 7 omitidas: 4 por symlink, 2 por no haber PostgreSQL y 1 permiso POSIX en Windows |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
@@ -179,7 +225,7 @@ Decisiones del propietario, 15 de octubre, en el orden en que se tomaron:
 2. Después, la cola del 8B, el 10 y el 11. **Los tres hechos.**
 3. Un plan escrito **antes** de tocar código, para online, simplicidad y
    actualización automática. **Escrito** en `docs/PLAN-ONLINE.md`.
-4. Versionar después de un cambio grande. **Hecho**: `0.6.0` con checksum y la
+4. Versionar después de un cambio grande. **Hecho**: `0.7.0` con checksum y la
    copia instalada verificada, y `0.4.0` tras el menú y el coordinador
    implícito. Publicar y firmar siguen pendientes.
 
@@ -1060,5 +1106,5 @@ La otra observación del revisor **queda cerrada**: la puerta de aceptación es
 ahora obligatoria para la cola, con comprobación al encolar y antes de integrar.
 
 Cierre reproducible de esta tanda: las 13 pruebas HTTP de la cola pasan; la
-suite completa pasa con **581 tests en 315.431 s** y 5 omisiones justificadas.
+suite completa pasa con **605 tests en 332.530 s** y 7 omisiones justificadas.
 `compileall` sobre `src`, `tests` y `scripts` termina sin salida.

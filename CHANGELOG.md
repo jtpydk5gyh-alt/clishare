@@ -7,6 +7,39 @@ once it leaves alpha.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-16
+
+The chat knows which project it is in.
+
+### Added
+- `cshcli.knowledge`: an index of the folder the CLI was opened in, and a reader
+  for one file. The first question of the loop carries the index, so a
+  conversation starts knowing what exists instead of being told.
+- `/ver <ruta>` reads a file into the conversation as a fenced block, and the
+  answer comes back like any other turn. A missing path, a binary file or a
+  refused path prints the reason and the loop continues.
+- The index lists what fits a 4000 character budget, README, `docs/`, `src/`,
+  `tests/` and `test/` first, and says how many files were left out instead of
+  pretending the list is complete. `.git`, `__pycache__`, `node_modules`, `dist`
+  and the usual binary suffixes are skipped.
+
+Reading goes through `Workspace`, the same resolver the mediated runner uses,
+so absolute paths, `..`, Git metadata, symbolic links, Windows junctions and
+hard links are refused exactly as they are on a write. No second path check was
+invented for the chat, and **nothing is executed**: the chat reads, it does not
+run commands.
+
+### Changed
+- The chat banner advertises `/ver`, and its text no longer contains a leftover
+  `forget` from an earlier draft.
+- `run_loop` takes an optional `note`. With no reader behind it, `/ver` is
+  refused rather than sent to a provider as if it were a question.
+
+**Not verified:** no provider has been contacted, so what a model does with the
+index and the file is not known. The index and the block are built and capped by
+tests; the reasoning that follows is the provider's, not something measured
+here.
+
 ## [0.6.0] - 2026-10-16
 
 The chat stops starting from nothing.

@@ -1,6 +1,6 @@
 # Verified status of CSHCLI
 
-Date: 16 October 2026. Version **0.6.0**, built locally with `dist/SHA256SUMS` but not published or signed.
+Date: 16 October 2026. Version **0.7.0**, built locally with `dist/SHA256SUMS` but not published or signed.
 Current priority: the [online plan](PLAN-ONLINE.md), whose first three steps
 can be done here. The product plan lives in
 [the main document](superpowers/plans/2026-10-14-cshcli.md).
@@ -14,8 +14,9 @@ says so and the reason is in [OPERATIONS.md](OPERATIONS.md),
 
 | Capability | Observed status |
 | --- | --- |
-| Runnable CLI from source | Help and 0.6.0 version verified |
-| Conversational entry point | `cshcli` on its own opens a chat loop when the session is ready, and runs the first-run menu when it is not. Each turn carries the previous ones, capped at 20; the first question also carries the project's shared memory, capped at 8000 characters. `/limpiar` clears, `/salir`, `/quit` and Ctrl-D leave. A provider error prints and the loop continues. `cshcli chat "text"` stays a single query. Request bodies per provider are tested; **no provider has been contacted** |
+| Runnable CLI from source | Help and 0.7.0 version verified |
+| Conversational entry point | `cshcli` on its own opens a chat loop when the session is ready, and runs the first-run menu when it is not. Each turn carries the previous ones, capped at 20; the first question also carries the project's shared memory, capped at 8000 characters, and an index of the folder the CLI was opened in, capped at 4000 characters and reporting how many files were left out. `/ver <ruta>` reads one file into the conversation, through the same `Workspace` resolver the mediated runner uses. `/limpiar` clears, `/salir`, `/quit` and Ctrl-D leave. A provider error prints and the loop continues. `cshcli chat "text"` stays a single query. Request bodies per provider are tested; **no provider has been contacted** |
+| What the chat can read | The index lists what fits the budget, README, `docs/`, `src/` and `tests/` first, and skips `.git`, `__pycache__`, `node_modules`, `dist` and the usual binary suffixes. `/ver` refuses absolute paths, `..`, Git metadata, symbolic links, Windows junctions and hard links, and refuses a file that is not text. **The chat reads; it executes nothing** |
 | Update check | `cshcli update` compares and reports without changing anything. `--apply` needs the version typed and verifies the checksum first. Tested with a fake transport; **no real download has been performed** |
 | First run without instructions | `cshcli start` is a two-option menu that performs the setup: a private session, or joining with an invitation code or creating a shared project. No server is started first: the coordinator is implicit. `cshcli key set` stores a provider key outside the environment. Tested end to end through the real CLI entry point |
 | Coordinator lifetime | A command with no reachable coordinator runs one inside its own process on an ephemeral port and closes it on exit. Identity, current project and token live in `.cshcli/session.json`, so later commands need no `--url` and no token. Two embedded coordinators over one database are tested. `cshcli serve` still provides a long-lived one |
@@ -56,13 +57,13 @@ Observed environment: Windows with CPython 3.12.14. The interpreter path is
 machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests`
-returned **581 passing tests in 315.431 seconds**, with 5 skipped: two symbolic
-link cases on a host that does not grant the privilege, two PostgreSQL cases
-that need a real server which does not exist on this machine, and one POSIX file
-permission case that does not apply on Windows. The Windows junction case runs.
-Concurrent tests use eleven synchronised threads and, for deployments, eleven
-processes against one environment; they do not yet represent eleven distributed
-machines.
+returned **605 passing tests in 332.530 seconds**, with 7 skipped: four
+symbolic link cases on a host that does not grant the privilege, two PostgreSQL
+cases that need a real server which does not exist on this machine, and one
+POSIX file permission case that does not apply on Windows. The Windows junction
+cases run. Concurrent tests use eleven synchronised threads and, for
+deployments, eleven processes against one environment; they do not yet
+represent eleven distributed machines.
 
 `python -m compileall -q src tests scripts`, `python scripts/cshcli.py --help`,
 `python scripts/guard_secrets.py --all` and `python scripts/release.py` were
@@ -126,6 +127,19 @@ confirmed zero explanatory comments/docstrings; the guard tests and the rewrite
 helper tests are the only intentional exception, since a guard with no tests
 cannot be trusted to still guard.
 
+Two decisions about what the chat carries, each with a reason:
+
+- **The index is the folder the CLI was opened in, not the project stored in
+  the coordinator.** Someone who writes `cshcli` inside their repository wants
+  the agent to talk about that repository. Listing stored names would describe
+  the team, not the work in front of them.
+- **Reading reuses `Workspace` instead of adding a second path check.** The
+  runner already refuses absolute paths, `..`, Git metadata, symbolic links,
+  junctions and hard links; a new resolver for the chat would be a new door
+  with the same name and one fewer test behind it. The chat reads and executes
+  nothing, which keeps the missing sandbox from becoming a missing execution
+  surface too.
+
 **Working rules added during this work**, all recorded in
 [CONTEXT.md](CONTEXT.md) because each one cost something to learn:
 
@@ -152,5 +166,6 @@ cannot be trusted to still guard.
 | Chaos drills and a proven restore | Partly. Local chaos drills and a real SQLite restore pass; PostgreSQL restore does not |
 | Signing and publishing the release | **No.** No credentials |
 | Requiring a queue entry to come from an accepted patch | Done. The queue refuses a commit with no accepted-patch record and one accepted with a different base, and rechecks acceptance immediately before the merge |
+| The chat starting from the folder it was opened in | Done. The first question carries a capped index of the files, and `/ver <ruta>` reads one into the conversation through `Workspace`. Tested through the real CLI entry point |
 
 Each of these is a row above with its evidence, not a promise.

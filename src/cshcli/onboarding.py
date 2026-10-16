@@ -97,6 +97,9 @@ MENU = (
     "  2) Unirme o crear   Un proyecto compartido con otra persona\n"
 )
 
+NOTE_MISSING_ARGUMENT = "  /ver necesita una ruta: /ver src/cshcli/cli.py"
+NOTE_UNAVAILABLE = "  /ver no está disponible aquí."
+
 
 def _ask(prompt, reader, out):
     while True:
@@ -206,7 +209,7 @@ def project_context(entries, name, limit=8000):
     return text[:limit]
 
 
-def run_loop(provider, model, ask, reader=None, out=None, keep=20, context=None):
+def run_loop(provider, model, ask, reader=None, out=None, keep=20, context=None, note=None):
     reader = reader or input
     out = out or print
     history = []
@@ -227,6 +230,19 @@ def run_loop(provider, model, ask, reader=None, out=None, keep=20, context=None)
             sent = 0
             out("  Conversación borrada.")
             continue
+        if line == "/ver" or line.startswith("/ver "):
+            if note is None:
+                out(NOTE_UNAVAILABLE)
+                continue
+            requested = line[len("/ver"):].strip()
+            if not requested:
+                out(NOTE_MISSING_ARGUMENT)
+                continue
+            try:
+                line = note(requested)
+            except DomainError as error:
+                out(f"[{error.code}] {error}")
+                continue
         prompt = f"{context}\n\n{line}" if context and not sent else line
         try:
             answer = ask(provider, model, prompt, list(history))

@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 from . import __version__, providers, updater
 from .client import Client
 from .errors import DomainError
+from .knowledge import index_text, note_text
 from .local import connect, database_path, session_root
 from .onboarding import PROVIDER_VARIABLES, Keyring, project_context, run_loop, run_wizard
 from .server import make_server
@@ -205,6 +206,17 @@ def _shared_context(client, session):
     return project_context(page.get("items"), session.project_name or session.project)
 
 
+def _project_index():
+    try:
+        return index_text(Path.cwd())
+    except DomainError:
+        return ""
+
+
+def _chat_note(path):
+    return note_text(Path.cwd(), path)
+
+
 def _chat_loop(client, session, args):
     provider = getattr(args, "provider", None) or session.provider
     model = getattr(args, "model", None) or session.model
@@ -216,10 +228,10 @@ def _chat_loop(client, session, args):
         print(providers.chat(provider, model, prompt))
         return 0
     session.remember(provider=provider)
-    context = _shared_context(client, session)
+    context = "\n\n".join(part for part in (_shared_context(client, session), _project_index()) if part)
     print(f"\n  {session.name} · {session.project_name} · {provider}"
-          f"    /limpiar forget, /salir para salir\n")
-    return run_loop(provider, model, providers.chat, context=context)
+          f"    /ver <archivo> para leer, /limpiar, /salir para salir\n")
+    return run_loop(provider, model, providers.chat, context=context, note=_chat_note)
 
 
 def _update(args):
