@@ -109,6 +109,58 @@ def verify_install(wheel: Path, version: str, into: Path) -> dict:
             "help_lines": len(help_run.stdout.splitlines())}
 
 
+def signing_key_from_environment() -> Path | None:
+    value = os.environ.get("CSHCLI_SIGNING_KEY", "").strip()
+    return Path(value) if value else None
+
+
+def find_signer() -> str | None:
+    configured = os.environ.get("CSHCLI_SIGNER", "").strip()
+    if configured:
+        return configured
+    found = shutil.which("minisign")
+    if found:
+        return found
+    portable = Path(os.path.expanduser("~")) / "cshcli-tools" / "bin" / \
+        "minisign-win64" / "x86_64" / "minisign.exe"
+    return str(portable) if portable.exists() else None
+
+
+def signature_report(signer: str | None, key: Path | None) -> dict:
+    if not signer:
+        return {"signed": False, "reason": "no_signer", "detail": "minisign is not installed"}
+    if key is None or not Path(key).is_file():
+        return {"signed": False, "reason": "no_key",
+                "detail": "set CSHCLI_SIGNING_KEY to the secret key of the owner"}
+    return {"signed": True, "reason": None, "detail": ""}
+
+
+def sign(target: Path, signer: str, key: Path) -> dict:
+    if not Path(key).is_file():
+        raise ReleaseRefused(f"the signing key does not exist: {key}")
+    comment = f"cshcli {read_version()}"
+    result = subprocess.run(
+        [signer, "-S", "-W", "-s", str(key), "-m", str(target), "-t", comment],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if result.returncode != 0:
+        raise ReleaseRefused(f"signing failed: {result.stderr.strip()[-300:]}")
+    signature = Path(str(target) + ".minisig")
+    if not signature.exists():
+        raise ReleaseRefused("the signer reported success but wrote no signature")
+    return {"signed": True, "signature": str(signature), "trusted_comment": comment}
+
+
+def verify_signature(target: Path, signer: str, public_key: Path) -> dict:
+    signature = Path(str(target) + ".minisig")
+    if not signature.exists() or not Path(public_key).is_file():
+        return {"valid": False, "detail": "no signature or no public key"}
+    result = subprocess.run(
+        [signer, "-V", "-m", str(target), "-p", str(public_key), "-q"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
+    return {"valid": result.returncode == 0,
+            "detail": "" if result.returncode == 0 else result.stderr.strip()[-200:]}
+
+
 def main() -> int:
     try:
         version = read_version()
@@ -126,6 +178,14 @@ def main() -> int:
         sums = checksums(artefacts)
         report = verify_install(artefacts[0], version, DIST / "_install_check")
         shutil.rmtree(DIST / "_install_check", ignore_errors=True)
+        signer = find_signer()
+        key = signing_key_from_environment()
+        state = signature_report(signer, key)
+        if state["signed"]:
+            state.update(sign(sums, signer, key))
+        elif "--require-signature" in sys.argv:
+            raise ReleaseRefused(
+                f"the release is not signed ({state['reason']}): {state['detail']}")
     except ReleaseRefused as refusal:
         print(f"release refused: {refusal}", file=sys.stderr)
         return 1
@@ -135,7 +195,11 @@ def main() -> int:
     print(f"  {sums.name}")
     print(f"  installed copy reports {report['version']} on Python {report['python']}, "
           f"--help answers in {report['help_lines']} lines")
-    print("not done here: signing, publishing, and install checks on other platforms")
+    if state["signed"]:
+        print(f"  {Path(state['signature']).name}  {state['trusted_comment']}")
+    else:
+        print(f"  not signed: {state['reason']} ({state['detail']})")
+    print("not done here: publishing, and install checks on other platforms")
     return 0
 
 

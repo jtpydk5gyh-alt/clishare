@@ -58,12 +58,17 @@ Observed environment: Windows with CPython 3.12.14. The interpreter path is
 machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests`
-returned **664 passing tests in 362.833 seconds**, with 26 skipped. Every skip
+returned **677 passing tests in 410.211 seconds**, with 26 skipped. Every skip
 says why: five symbolic link cases on a host that does not grant the
 privilege, one POSIX file permission case that does not apply on Windows, and
 twenty that need `CSHCLI_REMOTE_DSN` pointing at a real PostgreSQL. Those twenty
 **were run** against PostgreSQL 16.2 here, and passed. The Windows junction
-cases run. Concurrent tests use eleven synchronised threads and, for
+cases run.
+
+The two tests that used to fail under load are now independent of the machine:
+the capture test gives its child fifteen times the timeout, and the server
+test retries only a dropped connection, never an HTTP status. Both were
+checked in both directions, including with the code broken on purpose. Concurrent tests use eleven synchronised threads and, for
 deployments, eleven processes against one environment; they do not yet
 represent eleven distributed machines.
 

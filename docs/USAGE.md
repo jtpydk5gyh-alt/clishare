@@ -352,8 +352,10 @@ python -m compileall -q src tests scripts
 python scripts/cshcli.py --help
 ```
 
-The current Windows run passes 581 tests with 5 explicit skips for unavailable
-POSIX symbolic-link/file-permission guarantees and real PostgreSQL. The tests
+The full suite passes 677 tests with 26 explicit skips: symbolic-link
+cases this host does not grant, one POSIX file-permission case that does not
+apply on Windows, and twenty that need `CSHCLI_REMOTE_DSN`. Those twenty were
+run against PostgreSQL 16.2 and pass. The tests
 use real SQLite, local HTTP, Git, and provider fixtures. The synchronised
 races pit eleven agents from two people against the same resource, memory
 version, and invitation. They check permissions, expiration, persistent

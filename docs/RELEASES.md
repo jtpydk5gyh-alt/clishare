@@ -59,6 +59,32 @@ private key is the owner's**, and it should never be in the repository, in
 Signing `SHA256SUMS` and not the wheel is deliberate: one signature covers
 every artefact it lists, so adding a file later does not need a new key.
 
+## `release.py` now signs by itself
+
+That procedure became a flag. Put the key where the script can find it:
+
+```
+$env:CSHCLI_SIGNING_KEY = "$HOME/cshcli-tools/cshcli.key"
+python scripts/release.py
+```
+
+The script finds `minisign` in `PATH`, in `CSHCLI_SIGNER`, or in the portable
+copy under `~/cshcli-tools/bin/`, signs `SHA256SUMS`, and prints
+`SHA256SUMS.minisig` next to it.
+
+**With no key it still builds, and it says so**, in the same spirit as the rest
+of the script: a release nobody asked to sign should not be blocked by it, but
+it should never be silent either. To refuse instead:
+
+```
+python scripts/release.py --require-signature
+```
+
+`tests/test_release_sign.py` signs, verifies, tampers with the file and checks
+that verification fails, signs with a second key and checks that the first
+public key rejects it. Those four run against the real `minisign` when it is
+installed and say why they were skipped when it is not.
+
 ## Bumping the version
 
 ```
