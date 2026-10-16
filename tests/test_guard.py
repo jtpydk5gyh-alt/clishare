@@ -252,7 +252,7 @@ class GuardTests(unittest.TestCase):
 
         def capture(command, **keywords):
             built.append(command)
-            return type("R", (), {"stdout": "", "returncode": 0})()
+            return type("R", (), {"stdout": b"", "returncode": 0})()
 
         with mock.patch.object(guard.subprocess, "run", side_effect=capture):
             guard.committed_text("doc.md", ":")
@@ -301,6 +301,106 @@ class GuardTests(unittest.TestCase):
                 result = guard.main(["doc.md"])
 
         self.assertEqual(result, 1)
+
+
+class IgnoredSecretFilesTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.repository = Path(self.temp.name) / "repo"
+        self.repository.mkdir()
+        shutil.copyfile(Path(__file__).resolve().parents[1] / ".gitignore",
+                        self.repository / ".gitignore")
+        subprocess.run(["git", "init", "-q"], cwd=self.repository, check=True,
+                       capture_output=True)
+
+    def ignored(self, name):
+        result = subprocess.run(["git", "check-ignore", "-q", name],
+                                cwd=self.repository, capture_output=True)
+        return result.returncode == 0
+
+    def test_credential_files_are_never_stageable(self):
+        for name in ("credentials.json", "service-account.json", ".netrc",
+                     ".npmrc", ".pypirc", "server.crt", "key.p12", "signing.pfx",
+                     "vault.keystore", "notes_PRIVATE.md"):
+            with self.subTest(name=name):
+                self.assertTrue(self.ignored(name),
+                                f"{name} se podria commitear por accidente")
+
+    def test_the_pattern_replaces_two_concrete_filenames(self):
+        for name in ("docs/REVISION_PRIVATE.md", "docs/ESTADO_PRIVATE.md"):
+            with self.subTest(name=name):
+                self.assertTrue(self.ignored(name))
+
+    def test_the_web_build_stays_out(self):
+        self.assertTrue(self.ignored("web/index.html"))
+
+    def test_ordinary_source_is_not_ignored(self):
+        for name in ("src/cshcli/cli.py", "docs/STATUS.md", "README.md"):
+            with self.subTest(name=name):
+                self.assertFalse(self.ignored(name))
+
+
+class HardPathAndBinaryTests(unittest.TestCase):
+    TOKEN = "ghp_" + "K" * 36
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / "repo"
+        self.root.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=self.root, check=True,
+                       capture_output=True)
+        subprocess.run(["git", "config", "user.email", guard.ALLOWED_EMAIL],
+                       cwd=self.root, check=True, capture_output=True)
+
+    def g(self, *command):
+        return subprocess.run(list(command), cwd=self.root, capture_output=True,
+                              text=True, encoding="utf-8", errors="replace")
+
+    def stage(self, name, content):
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(content, bytes):
+            path.write_bytes(content)
+        else:
+            path.write_text(content, encoding="utf-8")
+        self.g("git", "add", "--", name)
+        return path
+
+    def scan(self, *arguments):
+        return subprocess.run([sys.executable, str(SCRIPT), *arguments],
+                              cwd=self.root, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
+
+    def test_indexed_content_is_scanned_after_the_file_is_deleted(self):
+        self.stage("removed.txt", self.TOKEN).unlink()
+        self.assertEqual(self.scan().returncode, 1,
+                         "el guard leyo el disco en vez del indice")
+
+    def test_spaces_unicode_and_a_leading_hyphen_do_not_hide_a_secret(self):
+        for name in (" space name.txt", "caf\u00e9.txt", "-leading.txt"):
+            with self.subTest(name=name):
+                self.stage(name, self.TOKEN)
+                result = self.scan("--staged", "--", name)
+                self.assertEqual(result.returncode, 1, result.stderr)
+        every = self.scan()
+        self.assertEqual(every.returncode, 1, every.stderr)
+        self.assertIn("caf\u00e9.txt", every.stdout)
+
+    def test_a_secret_hides_behind_no_extension_and_behind_a_container(self):
+        for name, payload in (("payload.whl", b"\xff\x00" + self.TOKEN.encode()),
+                              ("payload.sqlite3", self.TOKEN.encode()),
+                              ("sin-extension", self.TOKEN.encode())):
+            with self.subTest(name=name):
+                self.stage(name, payload)
+                self.assertEqual(self.scan("--staged", name).returncode, 1,
+                                 "una extension no puede esconder un secreto")
+
+    def test_a_compressed_image_is_still_left_alone(self):
+        self.stage("logo.png", b"\x89PNG\r\n\x1a\n" + bytes(range(64)))
+        self.assertEqual(self.scan("--staged", "logo.png").returncode, 0,
+                         "un binario comprimido sin texto legible no es un hallazgo")
 
 
 class InstalledHookTests(unittest.TestCase):
