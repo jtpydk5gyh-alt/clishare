@@ -430,16 +430,34 @@ class CaptureTests(unittest.TestCase):
     def test_capture_timeout_stops_descendants_while_parent_is_running(self):
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / "survived.txt"
-            child = "import pathlib,time; time.sleep(.8); pathlib.Path(" + repr(str(marker)) + ").write_text('survived')"
-            parent = "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c'," + repr(child) + "]); time.sleep(5)"
+            delay = 3.0
+            child = ("import pathlib,time; time.sleep(" + repr(delay) + "); pathlib.Path("
+                     + repr(str(marker)) + ").write_text('survived')")
+            parent = "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c'," + repr(child) + "]); time.sleep(30)"
             started = time.monotonic()
             with self.assertRaises(DomainError) as caught:
                 providers._run_capture([sys.executable, "-c", parent], timeout=.2)
             elapsed = time.monotonic() - started
-            time.sleep(.9)
+            time.sleep(delay + 1.5)
             self.assertEqual(caught.exception.code, "provider_timeout")
-            self.assertFalse(marker.exists())
-            self.assertLess(elapsed, 2.5)
+            self.assertFalse(marker.exists(),
+                             "el hijo sobrevivio al timeout de su padre")
+            self.assertLess(elapsed, 20)
+
+    def test_capture_timeout_holds_repeatedly_under_load(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for attempt in range(3):
+                marker = Path(directory) / f"survived-{attempt}.txt"
+                child = "import pathlib,time; time.sleep(2.0); pathlib.Path(" + \
+                    repr(str(marker)) + ").write_text('survived')"
+                parent = "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c'," + repr(child) + "]); time.sleep(20)"
+                with self.assertRaises(DomainError) as caught:
+                    providers._run_capture([sys.executable, "-c", parent], timeout=.2)
+                self.assertEqual(caught.exception.code, "provider_timeout")
+            time.sleep(3.5)
+            for attempt in range(3):
+                with self.subTest(attempt=attempt):
+                    self.assertFalse((Path(directory) / f"survived-{attempt}.txt").exists())
 
     def test_capture_sanitizes_environment_and_accepts_stdin(self):
         environment = {"OPENAI_API_KEY": "api", "MINIMAX_API_KEY": "mini", "CSHCLI_TOKEN": "session"}

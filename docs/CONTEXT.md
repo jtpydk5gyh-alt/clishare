@@ -125,6 +125,33 @@ Tampoco está: una cadena de confianza pública —el certificado es autofirmado
 dura 30 días—, una segunda máquina, ni un restore hecho mientras otra máquina
 sirve tráfico.
 
+## Los dos tests que fallaban bajo carga
+
+Un job de Windows 3.11 fallo el 16 de octubre en
+`test_server.py::test_authentication_and_browser_requests_are_rejected`, con un
+reset de conexion y no con un 403 ausente. El mismo commit paso ese job en el
+run de push: era carga, no un defecto del codigo.
+
+Dos arreglos, ambos con la misma regla: **un test que no puede distinguir un
+fallo real de ruido de la maquina no vale lo que dice**.
+
+1. `test_capture_timeout_stops_descendants_while_parent_is_running` depended
+   de que la maquina arrancara un proceso en 200 ms. Ahora el hijo espera 3 s,
+   quince veces el timeout, y el margen ya no depende de la carga. Se anade
+   `test_capture_timeout_holds_repeatedly_under_load`, que lo comprueba tres
+   veces seguidas.
+2. `test_server.py` reintenta **solo** ante un error de conexion, hasta tres
+   veces con espera creciente. Nunca reintenta un codigo HTTP: si el 403
+   desaparece, el test sigue fallando, que es lo que tiene que comprobar.
+
+**Comprobado de las dos formas que importan:**
+
+- Bajo carga: seis copias en paralelo del test de captura, y cuatro copias de
+  doce pruebas, todas en verde.
+- Con el codigo roto a proposito: al neutralizar la rama de Windows que mata el
+  arbol de procesos, el test falla con *"el hijo sobrevivio al timeout de su
+  padre"*. Un test que siempre pasa noHabria detectado nada.
+
 ## El CI corria sobre un runtime retirado
 
 `actions/checkout@v4` y `actions/setup-python@v5` apuntan a **Node 20**, que

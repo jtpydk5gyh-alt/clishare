@@ -2,7 +2,9 @@ import json
 from pathlib import Path
 import tempfile
 import threading
+import time
 import unittest
+from http.client import RemoteDisconnected
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -31,10 +33,20 @@ class ServerTests(unittest.TestCase):
             headers["Content-Type"] = "application/json"
             data = json.dumps(data).encode()
         request = Request(self.url + path, data=data, headers=headers, method=method)
-        try:
-            response = urlopen(request, timeout=5)
-        except HTTPError as error:
-            response = error
+        for attempt in range(4):
+            try:
+                response = urlopen(request, timeout=15)
+            except HTTPError as error:
+                response = error
+                break
+            except (ConnectionError, OSError, RemoteDisconnected) as error:
+                if attempt == 3:
+                    raise
+                time.sleep(0.4 * (attempt + 1))
+                request = Request(self.url + path, data=data, headers=headers,
+                                  method=method)
+                continue
+            break
         with response:
             return response.status, json.load(response)
 
