@@ -95,8 +95,9 @@ See [deployments](DEPLOYMENTS.md).
 **CI is active and green.** The workflow runs on every push and pull request
 across Windows and Linux with Python 3.11, 3.12 and 3.13. It was published by
 pushing the file over git, because the repository token lacks the `workflow`
-scope that the contents API requires. The twelve jobs pass on the current
-`main`, and `Personal data guard` is a required check on the `main-integrity`
+scope that the contents API requires. The twelve test jobs and the guard pass
+on the current `main`, fourteen checks in all, and `Personal data guard` is a
+required check on the `main-integrity`
 ruleset: a pull request carrying a detected secret cannot merge.
 
 **Attribution of merges is a known trap.** GitHub attributes a squash merge to

@@ -7,6 +7,14 @@ once it leaves alpha.
 
 ## [Unreleased]
 
+### Fixed
+- **A tracked test file started with a byte order mark.** `tests/test_validate_lease.py`
+  carried a UTF-8 BOM committed in `#42`. Python's importer discards it, so nothing
+  that runs today failed; any tool that read the file as `encoding="utf-8"` and parsed
+  it did, which is how it was found. It was the only one of 122 tracked files with a
+  BOM. `tests/test_encoding.py` now reads every tracked file from the index and fails
+  if one starts with a BOM or does not parse, so it cannot come back silently.
+
 ## [0.9.0] - 2026-10-16
 
 The blockers that said "no server here" are gone. PostgreSQL runs, it is
