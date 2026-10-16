@@ -12,6 +12,7 @@ from .errors import DomainError
 from .knowledge import index_text, note_text, search_text
 from .local import connect, database_path, session_root
 from .onboarding import PROVIDER_VARIABLES, Keyring, project_context, run_loop, run_wizard
+from .remote_server import make_remote_server
 from .server import make_server
 from .session import Session
 
@@ -275,7 +276,9 @@ def _update(args):
 def _serve_remote(args):
     dsn = os.environ.get("CSHCLI_REMOTE_DSN", "")
     certificate = os.environ.get("CSHCLI_TLS_CERT", "")
+    key = os.environ.get("CSHCLI_TLS_KEY", "")
     report = {"dsn": bool(dsn), "tls_certificate": bool(certificate),
+              "tls_key": bool(key),
               "database": "postgresql" if dsn.startswith("postgres") else None,
               "started": False,
               "missing": [], "detail": ""}
@@ -285,6 +288,8 @@ def _serve_remote(args):
         report["missing"].append("a PostgreSQL DSN")
     if not certificate:
         report["missing"].append("CSHCLI_TLS_CERT")
+    if not key:
+        report["missing"].append("CSHCLI_TLS_KEY")
     if report["missing"]:
         report["detail"] = (
             "The remote coordinator is not configured: "
@@ -293,7 +298,28 @@ def _serve_remote(args):
         emit(report)
         print(report["detail"], file=sys.stderr)
         return 1
+    try:
+        coordinator = make_remote_server(dsn, certificate, key,
+                                         host=args.host, port=args.port)
+    except ValueError as error:
+        report["detail"] = str(error)
+        emit(report)
+        print(f"cshcli serve --remote: {error}", file=sys.stderr)
+        return 1
+    report["started"] = True
+    report["address"] = f"https://{args.host}:{coordinator.server_address[1]}"
+    report["certificate"] = certificate
+    report["detail"] = ("Serving over TLS against PostgreSQL. The certificate is "
+                        "self-signed: a client has to trust it explicitly.")
     emit(report)
+    print(f"\n  {report['address']}/healthz  ·  Ctrl-C para parar\n", file=sys.stderr)
+    try:
+        coordinator.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        coordinator.shutdown()
+        coordinator.server_close()
     return 0
 
 

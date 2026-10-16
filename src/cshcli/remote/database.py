@@ -47,6 +47,8 @@ class RemoteStore:
 
     def connect(self):
         require_driver()
+        if self._connection is not None and not self._connection.closed:
+            return self._connection
         import psycopg
         self._connection = psycopg.connect(self.dsn)
         return self._connection

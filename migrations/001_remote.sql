@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS projects (
     name TEXT NOT NULL,
     name_key TEXT NOT NULL,
     owner_id TEXT NOT NULL REFERENCES users(id),
-    created_at REAL NOT NULL DEFAULT extract(epoch FROM now())
+    created_at DOUBLE PRECISION NOT NULL DEFAULT extract(epoch FROM now())
 );
 
 CREATE TABLE IF NOT EXISTS memberships (
@@ -40,9 +40,9 @@ CREATE TABLE IF NOT EXISTS invitations (
     project_id TEXT NOT NULL REFERENCES projects(id),
     token_hash TEXT NOT NULL UNIQUE,
     role TEXT NOT NULL CHECK (role IN ('owner', 'member', 'viewer')),
-    expires_at REAL NOT NULL,
-    accepted_at REAL,
-    created_at REAL NOT NULL
+    expires_at DOUBLE PRECISION NOT NULL,
+    accepted_at DOUBLE PRECISION,
+    created_at DOUBLE PRECISION NOT NULL
 );
 
 CREATE SEQUENCE IF NOT EXISTS lease_fence_sequence AS BIGINT START WITH 1;
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS leases (
     user_id TEXT NOT NULL REFERENCES users(id),
     resource TEXT NOT NULL,
     fence BIGINT NOT NULL DEFAULT nextval('lease_fence_sequence'),
-    expires_at REAL NOT NULL
+    expires_at DOUBLE PRECISION NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS leases_by_project ON leases(project_id, resource);
@@ -65,13 +65,13 @@ CREATE TABLE IF NOT EXISTS memory (
     content TEXT NOT NULL,
     version INTEGER NOT NULL,
     author_id TEXT NOT NULL REFERENCES users(id),
-    updated_at REAL NOT NULL,
+    updated_at DOUBLE PRECISION NOT NULL,
     kind TEXT,
     scope TEXT,
     status TEXT,
     source_commit TEXT,
     evidence_json TEXT,
-    expires_at REAL,
+    expires_at DOUBLE PRECISION,
     PRIMARY KEY (project_id, key)
 );
 
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS authorization_grants (
     project_id TEXT NOT NULL REFERENCES projects(id),
     scope TEXT NOT NULL,
     generation BIGINT NOT NULL DEFAULT 1,
-    revoked_at REAL,
+    revoked_at DOUBLE PRECISION,
     PRIMARY KEY (user_id, project_id, scope)
 );
 
@@ -88,8 +88,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id),
     token_hash TEXT NOT NULL UNIQUE,
-    issued_at REAL NOT NULL,
-    expires_at REAL NOT NULL
+    issued_at DOUBLE PRECISION NOT NULL,
+    expires_at DOUBLE PRECISION NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -98,14 +98,8 @@ CREATE TABLE IF NOT EXISTS events (
     user_id TEXT NOT NULL REFERENCES users(id),
     kind TEXT NOT NULL,
     payload_json TEXT NOT NULL,
-    created_at REAL NOT NULL
+    created_at DOUBLE PRECISION NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS events_by_project ON events(project_id, created_at);
 
--- Rolling this back drops the remote schema entirely. The pilot's SQLite file
--- is a separate artefact and is never touched by this script; see
--- docs/OPERATIONS.md for the order that keeps one authority at a time.
-DROP TABLE IF EXISTS events, sessions, authorization_grants, memory, leases,
-    invitations, memberships, projects, users CASCADE;
-DROP SEQUENCE IF EXISTS lease_fence_sequence;
