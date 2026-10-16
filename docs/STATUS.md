@@ -58,7 +58,7 @@ Observed environment: Windows with CPython 3.12.14. The interpreter path is
 machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests`
-returned **700 passing tests in 352.249 seconds**, with 26 skipped. Every skip
+returned **703 passing tests in 422.256 seconds**, with 26 skipped. Every skip
 says why: five symbolic link cases on a host that does not grant the
 privilege, one POSIX file permission case that does not apply on Windows, and
 twenty that need `CSHCLI_REMOTE_DSN` pointing at a real PostgreSQL. Those twenty
