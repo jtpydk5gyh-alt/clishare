@@ -6,8 +6,9 @@ agente pueda orientarse sin releer la conversación.
 
 ## Última tranche: el chat conoce el proyecto — 0.7.0
 
-Cerrada sobre `529f8f9`, en la rama `feat/chat-conoce-el-proyecto`. Entró por
-PR con CI verde y squash, como los demás.
+Cerrada sobre `529f8f9`, en la rama `feat/chat-conoce-el-proyecto`, por el
+**PR #65**. Dos commits: `aadf1d2` con el código y `5b948de` con la versión y la
+documentación. Entró por squash, como los demás.
 
 Qué aporta, en cuatro archivos y tres sitios de cableado:
 
@@ -84,7 +85,7 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | Rama por defecto | `main`, 52 commits en `origin/main`, todos con la noreply de GitHub |
 | Módulo Python | `cshcli`, 24 módulos más `__init__` y `__main__`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
-| PRs mergeadas | 58, sin `--admin`: el control obligatorio se respeta |
+| PRs mergeadas | 64, sin `--admin`: el control obligatorio se respeta |
 | Pruebas | 605 verdes; 7 omitidas: 4 por symlink, 2 por no haber PostgreSQL y 1 permiso POSIX en Windows |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
@@ -272,16 +273,27 @@ recordarlo antes de volver a cambiar la configuración de la cuenta.
 
 ## Qué haría yo ahora
 
-1. **El sandbox de 6C.** Es lo único que impide decir que CSHCLI coordina
-   de verdad. Un contenedor Linux no es un lujo: es lo mínimo para impedir
-   que un proceso lea la máquina anfitriona o escriba fuera del worktree.
-2. **`max_runtime_seconds` por defecto de 900 s** ya está; falta aplicar el
+1. **Decidir el ticket de soporte.** `docs/GITHUB_SUPPORT_TICKET.md` sigue sin
+   trackear con un dato privado dentro, y desde 0.7.0 el índice del chat lo
+   lista: `/ver docs/GITHUB_SUPPORT_TICKET.md` lo leería y lo mandaría al
+   proveedor. No es una escalada —el proceso ya puede leerlo— pero está a un
+   comando de salir de la máquina. Se limpia y se envía, o se borra.
+2. **Decidir si el chat puede escribir.** `/ver` lee. Poder **cambiar** un
+   archivo es otra cosa: necesita la puerta de publicación y un concepto de
+   parche, no una función. Es la decisión que convierte el chat en algo que
+   toca el repositorio, y no conviene tomarla por cansancio.
+3. **El sandbox de 6C.** Sigue siendo lo único que impide decir que CSHCLI
+   coordina de verdad. Un contenedor Linux no es un lujo: es lo mínimo para
+   impedir que un proceso lea la máquina anfitriona o escriba fuera del
+   worktree.
+4. **`max_runtime_seconds` por defecto de 900 s** ya está; falta aplicar el
    límite a un proceso real, que es donde se ve si funciona.
-3. **Limpiar `docs/GITHUB_SUPPORT_TICKET.md`** o borrarlo. Lleva horas
-   dando warnings en cada commit.
-4. **Un test de flakiness conocido**: `test_capture_timeout_stops_descendants_while_parent_is_running`
+5. **Un test de flakiness conocido**: `test_capture_timeout_stops_descendants_while_parent_is_running`
    falla si la máquina está cargada. Pasa aislado. Merece un margen mayor o
    una etiqueta de `slow`.
+
+Lo que **no** está pendiente de una decisión: el trabajo de producto que no
+depende de infraestructura está cerrado hasta el siguiente bloque.
 
 ## 6C: qué es un runner y qué no es
 
