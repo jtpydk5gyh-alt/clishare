@@ -30,7 +30,14 @@ coordinator answers over TLS.
   answers `/healthz` with the live database state. Previously it validated the
   configuration and refused to start.
 - `tests/test_remote_server.py`, `tests/test_restore_postgres.py`,
-  `tests/test_postgres_local.py`, `tests/test_migrate.py`.
+  `tests/test_postgres_local.py`, `tests/test_migrate.py`,
+  `tests/test_secret_files.py`.
+- **The chat index no longer announces or reads credentials.** `.env`,
+  `.netrc`, `.npmrc`, `.pypirc`, `credentials.json`, `service-account*`,
+  `id_rsa` and the `.pem`, `.key`, `.p12`, `.pfx`, `.crt`, `.keystore`
+  suffixes are skipped by the index and refused by `/ver`. The guard stopped
+  these files from being committed; nothing stopped them from being sent to a
+  provider.
 
 ### Fixed
 - **`REAL` is `float4` in PostgreSQL.** The schema declared every timestamp as

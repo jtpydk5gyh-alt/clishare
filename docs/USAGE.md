@@ -108,6 +108,14 @@ hard links are refused, and a file that is not text is refused rather than sent
 as noise. Nothing outside the folder is reachable, and no command is ever
 executed.
 
+**Credential files are neither listed nor readable.** `.env`, `.netrc`,
+`.npmrc`, `.pypirc`, `credentials.json`, `service-account*`, `id_rsa` and the
+`.pem`, `.key`, `.p12`, `.pfx`, `.crt` and `.keystore` suffixes never appear in
+the index, and `/ver` refuses them. The index is for your code, not for your
+keys: the personal data guard stops those files from being committed, and this
+stops them from being sent to a provider. `.env.example` is still read, because
+an example is not a secret.
+
 The memory block is capped at 8000 characters. `/limpiar` clears the conversation and lets the context reach the next question
 again. `/salir`, `/quit` or Ctrl-D leaves. A provider error is printed and the
 loop continues rather than exiting.
@@ -352,7 +360,7 @@ python -m compileall -q src tests scripts
 python scripts/cshcli.py --help
 ```
 
-The full suite passes 677 tests with 26 explicit skips: symbolic-link
+The full suite passes 691 tests with 26 explicit skips: symbolic-link
 cases this host does not grant, one POSIX file-permission case that does not
 apply on Windows, and twenty that need `CSHCLI_REMOTE_DSN`. Those twenty were
 run against PostgreSQL 16.2 and pass. The tests

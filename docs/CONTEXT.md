@@ -152,6 +152,36 @@ fallo real de ruido de la maquina no vale lo que dice**.
   arbol de procesos, el test falla con *"el hijo sobrevivio al timeout de su
   padre"*. Un test que siempre pasa noHabria detectado nada.
 
+## El indice del chat anunciaaba las credenciales
+
+Un `.env` con la clave de API, un `credentials.json`, un `server.key`: todo eso
+esta en `.gitignore`, asi que el guard lo impide commitear. Pero el indice del
+chat se construye recorriendo la carpeta, y ahi noFilteringaba nada:
+
+```
+Archivos del proyecto actual (7):
+- .env
+- .netrc
+- .npmrc
+- credentials.json
+- normal.py
+- server.crt
+- server.key
+```
+
+Escribir `/ver .env` mandaba la clave de API al proveedor. Y el indice no solo
+lo permitia: **lo anunciaba**.
+
+El guard protege el commit; faltaba el otro lado, que es no mandar el secreto
+fuera de la maquina. Los dos hacen falta: un fichero que git ignora sigue siendo
+un fichero en la carpeta donde alguien acaba de abrir el CLI.
+
+Ahora `is_secret` reconoce `.env*`, `.netrc`, `.npmrc`, `.pypirc`,
+`credentials.json`, `service-account*`, `id_rsa`, y los sufijos `.pem`, `.key`,
+`.p12`, `.pfx`, `.crt`, `.keystore`, `.asc`. El indice **no los anuncia** y
+`/ver` **se niega** con `secret_refused`. `.env.example` sigue leyendose: un
+ejemplo no es un secreto.
+
 ## El CI corria sobre un runtime retirado
 
 `actions/checkout@v4` y `actions/setup-python@v5` apuntan a **Node 20**, que
@@ -251,7 +281,7 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | Módulo Python | `cshcli`, 24 módulos más `__init__` y `__main__`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 67, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 677 verdes; 26 omitidas con motivo: 20 necesitan `CSHCLI_REMOTE_DSN` y **se ejecutaron** contra PostgreSQL 16.2 |
+| Pruebas | 691 verdes; 26 omitidas con motivo: 20 necesitan `CSHCLI_REMOTE_DSN` y **se ejecutaron** contra PostgreSQL 16.2 |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
