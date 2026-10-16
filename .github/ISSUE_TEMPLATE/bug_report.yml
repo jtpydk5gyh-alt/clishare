@@ -1,21 +1,20 @@
----
 name: Bug report
-description: Report a reproducible defect in the local pilot
+description: Report a reproducible problem with CSHCLI.
 title: "[bug] "
-labels: ["bug", "needs-triage"]
+labels: ["bug"]
 body:
   - type: textarea
     id: context
     attributes:
       label: Context
-      description: What were you trying to do, which branch, and which leases were active?
+      description: What were you trying to do, and which command or workflow failed?
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
       label: Steps to reproduce
-      description: Numbered minimal reproduction starting from a clean checkout.
+      description: Provide the smallest numbered steps needed to reproduce the problem.
     validations:
       required: true
   - type: textarea
@@ -28,6 +27,14 @@ body:
     id: observed
     attributes:
       label: Observed behavior
+    validations:
+      required: true
+  - type: input
+    id: cshcli-version
+    attributes:
+      label: CSHCLI version or commit
+      description: Include the installed version or the source commit you used.
+      placeholder: "0.2.0"
     validations:
       required: true
   - type: input
@@ -52,7 +59,6 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: Paste logs only. Never paste API keys, coordination tokens, or invitation tokens.
+      description: Include relevant output with secrets and personal data removed. Never share API keys, coordination tokens, or invitation tokens.
     validations:
       required: false
----
