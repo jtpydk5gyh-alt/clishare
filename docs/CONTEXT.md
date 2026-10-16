@@ -53,12 +53,10 @@ contra una API real: que el modelo aproveche el índice y las coincidencias es
 suyo, no medido aquí. Lo que sí se comprueba aquí es que una búsqueda vacía no
 cuesta, porque eso se decide en local.
 
-**Un efecto secundario que conviene conocer:** el índice lista
-`docs/GITHUB_SUPPORT_TICKET.md`, que está sin trackear y contiene un dato
-privado. `/ver` podría leerlo y mandarlo al proveedor, y `/buscar` contaría sus
-líneas. No es una escalada de privilegios — el proceso ya puede leer ese
-archivo — pero mientras ese ticket no se decida, está a un comando de distancia
-de salir de la máquina.
+**Un efecto secundario que conviene conocer, ya resuelto:** desde 0.7.0 el
+índice listaba `docs/GITHUB_SUPPORT_TICKET.md`, un archivo sin trackear con un
+dato privado dentro, así que `/ver` podía leerlo y mandarlo al proveedor. **El
+propietario decidió borrarlo el 16 de octubre**, y ya no está.
 
 Verificación: `622` pruebas verdes y `8` omitidas con motivo en
 `366.718 s`, con `PYTHONPATH=src`. Los 8 omitidos son cinco casos de symlink
@@ -188,11 +186,22 @@ escritura sobre la misma base, porque eso produce `database is locked`.
 | `scripts/install_hooks.py` | Instala el hook de commit. **Nunca sobrescribe uno existente** y exige que el guard exista. |
 | `scripts/push_rewritten_main.py` | Reescribe la autoría de cualquier commit con la dirección privada, suspende los rulesets, empuja con `--force-with-lease` y los restaura. |
 
+## Decisiones del propietario sobre el chat — 16 de octubre
+
+1. **`docs/GITHUB_SUPPORT_TICKET.md` se borra.** No se limpia ni se envía.
+   Estaba sin trackear con un dato privado dentro y bloqueando commits; era
+   ruido. Borrado de forma recuperable, fuera del índice de git, así que no
+   aparece en ningún commit.
+2. **El chat sigue solo leyendo.** No se abre la frontera de escritura desde el
+   chat. La puerta de publicación y la cola de integración existen y funcionan,
+   pero conectarlas al chat es otra cosa: el que escribe pasa a ser un modelo, y
+   un modelo no es una persona revisando un diff. Si algún día se abre, la vía
+   es `accept_patch` más compare-and-swap, no una escritura directa.
+3. **Se para aquí** hasta que el propietario diga. Lo que no dependía de
+   infraestructura ni de su decisión está cerrado.
+
 ## Lo que quedó a medias
 
-- **`docs/GITHUB_SUPPORT_TICKET.md`** sin commitear, contiene la dirección
-  privada. El hook lo bloqueó, correctamente. Decide si se envía a soporte
-  tras limpiarlo.
 - **Worktree del agente de auditoría** en
   `.codex/worktrees/security-audit/clishare`, con 35 ficheros sin
   commitear sobre una rama que ya no existe en `main`. Su trabajo útil ya
@@ -288,16 +297,26 @@ recordarlo antes de volver a cambiar la configuración de la cuenta.
 
 ## Qué haría yo ahora
 
-1. **El sandbox de 6C.** Es lo único que impide decir que CSHCLI coordina
-   de verdad. Un contenedor Linux no es un lujo: es lo mínimo para impedir
-   que un proceso lea la máquina anfitriona o escriba fuera del worktree.
-2. **`max_runtime_seconds` por defecto de 900 s** ya está; falta aplicar el
+Con el propietario parado hasta nuevo aviso, lo que queda abierto es de
+infraestructura o suyo:
+
+1. **Decidir si el chat puede escribir.** Decidido el 16 de octubre: **no por
+   ahora**. Sigue solo leyendo. Si algún día cambia de idea, la vía es
+   `accept_patch` más la cola y compare-and-swap, no una escritura directa:
+   el que escribe pasaría a ser un modelo, y un modelo no es una persona
+   revisando un diff.
+2. **El sandbox de 6C.** Sigue siendo lo único que impide decir que CSHCLI
+   coordina de verdad. Un contenedor Linux no es un lujo: es lo mínimo para
+   impedir que un proceso lea la máquina anfitriona o escriba fuera del
+   worktree.
+3. **`max_runtime_seconds` por defecto de 900 s** ya está; falta aplicar el
    límite a un proceso real, que es donde se ve si funciona.
-3. **Limpiar `docs/GITHUB_SUPPORT_TICKET.md`** o borrarlo. Lleva horas
-   dando warnings en cada commit.
 4. **Un test de flakiness conocido**: `test_capture_timeout_stops_descendants_while_parent_is_running`
    falla si la máquina está cargada. Pasa aislado. Merece un margen mayor o
    una etiqueta de `slow`.
+
+Lo que **no** está pendiente: el trabajo de producto que no depende de
+infraestructura ni de una decisión del propietario está cerrado.
 
 ## 6C: qué es un runner y qué no es
 
