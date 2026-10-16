@@ -85,11 +85,13 @@ una máquina que aquí no hay.
 levanta el coordinador sobre PostgreSQL detrás de HTTPS con la base en red
 privada, y el cliente deja de exigir loopback cuando la URL lo es de verdad.
 
-**Lo que no se puede prometer todavía.** No hay servidor, ni Docker, ni WSL, ni
-PostgreSQL en esta máquina. Todo lo anterior se escribe y se revisa, pero
-**"funciona online" no se declara hasta que alguien lo haya levantado en algún
-sitio y dos personas hayan conectado desde máquinas distintas.** Esa frase
-tiene que poder leerse en el README el día que sea cierto, y no antes.
+**Lo que no se puede prometer todavía. Actualizado el 16 de octubre de 2026.**
+Cuando se escribió esto no había servidor, ni Docker, ni WSL, ni PostgreSQL en
+la máquina. El servicio remoto ya está levantado y probado contra un
+PostgreSQL 16.2 real, pero **"funciona online" sigue sin declararse**: la frase
+exige que alguien lo haya levantado en algún sitio y que **dos personas hayan
+conectado desde máquinas distintas**, y eso aún no ha ocurrido. Esa frase tiene
+que poder leerse en el README el día que sea cierto, y no antes.
 
 ### 2. Sencillo: un comando, y que sepa qué hacer después
 
@@ -175,7 +177,7 @@ de `main` se documenta como la vía de quien quiere lo último.
 | 1.5 | El chat bucle, con memoria y con el índice del proyecto abierto | Sin esto el chat es un toy: empieza de cero y no sabe de qué habla | **Hecho** |
 | 2 | El comando de instalación documentado, con sus tres advertencias | Es la puerta de entrada y hoy no está documentado | **Hecho**, en el README |
 | 3 | `cshcli update`, primero avisando y luego con `--apply` | Depende del 1 y del 2: sin almacén y sin checksums, actualizar es a ciegas | **Hecho** |
-| 4 | `cshcli serve --remote` con HTTPS y PostgreSQL | Es lo más grande y lo único que necesita una máquina. Va último porque es el que puede quedarse esperando infraestructura | **Parcial.** El comando existe y **se niega a arrancar** sin TLS y sin DSN. Levantar PostgreSQL queda pendiente |
+| 4 | `cshcli serve --remote` con HTTPS y PostgreSQL | Es lo más grande y lo único que necesita una máquina. Va último porque es el que puede quedarse esperando infraestructura | **Hecho aquí.** Sirve por TLS contra un PostgreSQL 16.2 real y rechaza el HTTP plano. Lo que falta es una segunda máquina |
 
 **Sobre el paso 4, con su bloqueo escrito.** `cshcli serve --remote` comprueba
 la configuración y **no arranca nada** que no pueda cumplir: sin `CSHCLI_TLS_CERT`
@@ -184,10 +186,14 @@ host que no sea loopback, así que sería inútil además de inseguro. Y arranca
 loopback con un DSN remoto sería peor: parecería un servicio remoto y se
 comportaría como uno local.
 
-Lo que **no** puede es levantar PostgreSQL. En esta máquina no hay Docker, ni
-WSL, ni PostgreSQL, así que el comando dice qué falta y ahí se queda. Hay un
-test que afirma que **nunca se declara arrancado** algo que no arrancó, incluso
-con una configuración aparentemente completa.
+Lo que **no** puede es levantar PostgreSQL por sí solo. **Actualizado el 16 de
+octubre de 2026**: en el momento de escribirse esto era verdad —no había Docker,
+ni WSL, ni PostgreSQL en la máquina—, pero ya no lo es. `scripts/postgres_local.py`
+con los binarios de `pgserver` levanta un PostgreSQL 16.2 real, y
+`serve --remote` ya responde por TLS contra él. El requisito de fondo sigue en
+pie y conviene no relajarlo: un comando **nunca declara arrancado algo que no
+arrancó**, ni siquiera con una configuración aparentemente completa. Hay un test
+que lo afirma.
 
 La parte que queda es real y no simulable: levantar el servidor, probarlo con
 dos máquinas distintas y ejecutar los ensayos de concurrencia contra la base

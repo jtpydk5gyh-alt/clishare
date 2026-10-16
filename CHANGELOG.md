@@ -14,6 +14,18 @@ once it leaves alpha.
   it did, which is how it was found. It was the only one of 122 tracked files with a
   BOM. `tests/test_encoding.py` now reads every tracked file from the index and fails
   if one starts with a BOM or does not parse, so it cannot come back silently.
+- **Documentation claimed infrastructure that had already been built.** The
+  pending-work table in `docs/CONTEXT.md` still said `serve --remote` was "not
+  possible, no server" and the remote coordinator was "not possible, no
+  PostgreSQL", both of which stopped being true when the real PostgreSQL 16.2
+  work landed. Eight statements across `CONTEXT.md` and `PLAN-ONLINE.md` were
+  corrected, and `tests/test_docs_truth.py` now fails if a document declares
+  proven infrastructure absent in the present tense. It allows the past tense:
+  the reasoning that produced the original decisions is history and is kept.
+- **`docs/PLAN-NEXT.md`.** What remains, in one file: the signing key that is
+  the owner's to create, the four proofs that need a second machine, the
+  decisions that are closed by choice rather than by effort, and what has never
+  been exercised against a real provider, a real release or a real deployment.
 
 ## [0.9.0] - 2026-10-16
 

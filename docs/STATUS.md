@@ -58,7 +58,7 @@ Observed environment: Windows with CPython 3.12.14. The interpreter path is
 machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests`
-returned **703 passing tests in 422.256 seconds**, with 26 skipped. Every skip
+returned **707 passing tests in 395.694 seconds**, with 26 skipped. Every skip
 says why: five symbolic link cases on a host that does not grant the
 privilege, one POSIX file permission case that does not apply on Windows, and
 twenty that need `CSHCLI_REMOTE_DSN` pointing at a real PostgreSQL. Those twenty
@@ -134,6 +134,24 @@ No hosting provider or production target has been chosen. Style checks
 confirmed zero explanatory comments/docstrings; the guard tests and the rewrite
 helper tests are the only intentional exception, since a guard with no tests
 cannot be trusted to still guard.
+
+**Language rule, decided by the owner on 17 October 2026.** Commit messages,
+pull request titles and bodies, and the shipped documentation (`README.md`,
+`CHANGELOG.md`, `docs/STATUS.md`, `docs/USAGE.md`) are in **English**, matching
+the majority of the history. `docs/CONTEXT.md` is the single exception and
+stays in Spanish, because it is the owner's working document.
+
+Four squash commits (`#76`-`#79`) were originally merged with Spanish messages.
+On 17 October 2026 they were **rewritten in English by force-push**: the owner
+authorised it, the three rules that block it were disabled for the push and
+restored immediately after, and `--force-with-lease` was used so the push would
+abort if anyone had pushed in between. The rewrite was verified before it
+happened: the new tip's tree hash is byte-identical to the old one, so only the
+messages changed and no content was altered. The old tip is kept at the
+`backup-pre-english-rewrite` tag.
+
+`main-integrity` is intact again: four rules, `active`, and
+`current_user_can_bypass: never`.
 
 Two decisions about what the chat carries, each with a reason:
 

@@ -63,11 +63,13 @@ drill que hoy solo existe sobre SQLite pasa a ejecutarse contra PostgreSQL.
 
 **Bloqueado por una decisión del propietario, no por infraestructura.** El
 wheel y `SHA256SUMS` están construidos y con checksum; lo que falta es la
-identidad de firma. No hay GPG ni minisign en esta máquina, y se pueden
-instalar, pero **la clave es del propietario**: puedo generar una clave nueva y
-entregarle la pública y la privada para que las custodie, o usar una que ya
-tenga. Generar una identidad criptográfica en nombre de alguien sin que lo
-sepa no es una decisión que se tome sola.
+identidad de firma. **Actualizado el 16 de octubre de 2026**: `minisign` 0.12
+ya está instalado en la copia portable y verificado contra la clave pública que
+publica el proyecto, y `scripts/release.py` firma solo cuando
+`CSHCLI_SIGNING_KEY` apunta a la clave. **La clave es del propietario**: puedo
+generar una clave nueva y entregarle la pública y la privada para que las
+custodie, o usar una que ya tenga. Generar una identidad criptográfica en
+nombre de alguien sin que lo sepa no es una decisión que se tome sola.
 
 ## 5. El worktree del agente de auditoría
 
