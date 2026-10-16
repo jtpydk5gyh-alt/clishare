@@ -7,6 +7,11 @@ once it leaves alpha.
 
 ## [Unreleased]
 
+### Removed
+- `docs/GITHUB_SUPPORT_TICKET.md`. It was never tracked, held a private
+  address, and blocked commits. Since 0.7.0 the chat index listed it, so
+  `/ver` could have read it and sent it to a provider.
+
 ## [0.8.0] - 2026-10-16
 
 The chat can search the project before it opens anything.

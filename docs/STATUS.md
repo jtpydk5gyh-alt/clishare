@@ -177,3 +177,15 @@ Two decisions about what the chat carries, each with a reason:
 | The chat starting from the folder it was opened in | Done. The first question carries a capped index of the files, `/buscar <texto>` finds where something lives, and `/ver <ruta>` reads one file into the conversation, all through `Workspace`. Tested through the real CLI entry point |
 
 Each of these is a row above with its evidence, not a promise.
+
+## Two decisions from the owner, 16 October
+
+1. `docs/GITHUB_SUPPORT_TICKET.md` was **deleted**. It had never been tracked,
+   held a private address, and blocked commits. Removing it closes the last
+   thing the personal data guard kept flagging. Deleted recoverably and outside
+   git, so it appears in no commit.
+2. **The chat stays read-only.** `/ver` reads and `/buscar` searches; nothing
+   writes from the conversation. The publication gate and the integration queue
+   exist and are tested, but connecting them to a chat is a different decision:
+   the writer would be a model, and a model is not a person reviewing a diff.
+   If that changes, the path is `accept_patch` and compare-and-swap.
