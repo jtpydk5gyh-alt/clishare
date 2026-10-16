@@ -19,6 +19,17 @@ SKIPPED_SUFFIXES = {
     ".tgz", ".ttf", ".wav", ".webp", ".whl", ".woff", ".woff2", ".zip",
 }
 FAVOURITE_PREFIXES = ("README", "docs/", "src/", "tests/", "test/", "app/", "lib/")
+
+SECRET_NAMES = {
+    ".env", ".netrc", ".npmrc", ".pypirc", ".htpasswd", "id_rsa", "id_dsa",
+    "id_ecdsa", "id_ed25519", "credentials.json", ".netrc._ml", "known_hosts",
+}
+SECRET_SUFFIXES = {
+    ".pem", ".key", ".p12", ".pfx", ".crt", ".keystore", ".asc", ".ppk", ".jks",
+}
+SECRET_CONTAINS = ("service-account", "credential", "_PRIVATE", "_private")
+SECRET_STARTS_WITH = (".env.",)
+
 INDEX_LIMIT = 4000
 NOTE_LIMIT = 8000
 SEARCH_LIMIT = 4000
@@ -28,6 +39,18 @@ _LINE_LIMIT = 200
 _SEARCH_FOOTER = "Usa /ver <ruta> para ver el archivo entero."
 _NOT_OPENING = "Habla con la persona. No tienes que explicar estos bloques."
 _FENCE = "```"
+
+
+def is_secret(path: str) -> bool:
+    name = path.replace("\\", "/").rsplit("/", 1)[-1]
+    if name in SECRET_NAMES:
+        return True
+    if any(name.startswith(prefix) and name != ".env.example"
+           for prefix in SECRET_STARTS_WITH):
+        return True
+    if Path(name).suffix.lower() in SECRET_SUFFIXES:
+        return True
+    return any(marker in name for marker in SECRET_CONTAINS)
 
 
 def _readable_file(target: Path) -> bool:
@@ -68,8 +91,9 @@ def _walk(base: Workspace) -> list[str]:
                              and not os.path.islink(os.path.join(directory, name))]
         for name in files:
             target = Path(directory) / name
-            if _readable_file(target):
-                paths.append(target.relative_to(base.root).as_posix())
+            relative = target.relative_to(base.root).as_posix()
+            if _readable_file(target) and not is_secret(relative):
+                paths.append(relative)
     paths.sort(key=_rank)
     return paths
 
@@ -90,6 +114,9 @@ def index_text(root, limit: int = INDEX_LIMIT) -> str:
 
 
 def note_text(root, relative_path: str, limit: int = NOTE_LIMIT) -> str:
+    if is_secret(relative_path):
+        raise DomainError(403, "secret_refused",
+                          "Ese archivo guarda credenciales y no se manda al proveedor.")
     content = Workspace(Path(root), "chat").read(relative_path)
     if b"\x00" in content[:_SNIFF_BYTES]:
         raise DomainError(415, "not_text", "Ese archivo no es texto y no se puede mostrar aquí.")
