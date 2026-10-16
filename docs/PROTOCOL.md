@@ -284,7 +284,8 @@ Body:
 
 Response `201` with the queue entry. Repeating the same commit in the same
 project returns the original entry. A missing commit returns
-`404 commit_not_found`.
+`404 commit_not_found`. A commit the publication gate never accepted returns
+`409 patch_not_accepted`.
 
 ### `GET /v1/projects/{project_id}/queue`
 
@@ -296,10 +297,13 @@ require repository or check configuration.
 Response `200` with that project's entry. An identifier belonging to another
 project is returned as `404 queue_not_found`.
 
-**Known gap.** A queue entry does not currently require a prior accepted-patch
-record. `IntegrationGate.accept_patch` validates authorisation generation,
-lease fences and resources, and the queue does not yet insist that its commit
-passed through it. Do not treat queue processing as the publication authority.
+**Publication gate.** A queue entry requires a prior accepted-patch record for
+the same project and commit. `IntegrationGate.accept_patch` validates
+authorization generation, lease fences and resources, and the queue refuses
+anything it did not accept. A commit that no gate accepted returns
+`409 patch_not_accepted`; a commit accepted with a different base returns
+`409 patch_base_mismatch`. Acceptance is rechecked immediately before the merge,
+so a record withdrawn while the entry waited is refused rather than merged.
 
 ### `POST /v1/projects/{project_id}/queue/next`
 
@@ -332,7 +336,7 @@ a subscription from a cursor.
 | `401` | Missing, invalid, or unknown bearer identity | Select a valid local credential |
 | `403` | Not a member, insufficient role, foreign lease, rejected Origin/Host | Change permissions or destination explicitly |
 | `404` | Missing route, project, invitation, lease, commit, or queue entry | Re-read identifiers; do not create implicit substitutes |
-| `409` | CAS, busy resource, fence, expiration, consumed invitation, or missing repository/check configuration | Re-read state and replan |
+| `409` | CAS, busy resource, fence, expiration, consumed invitation, missing repository/check configuration, or a patch the gate did not accept | Re-read state and replan |
 | `413` | Body over 1 MiB | Reduce the body before resending |
 | `415` | Body with a `Content-Type` other than `application/json` | Send JSON with the correct header |
 | `500` | Unexpected internal failure | Preserve context, check the coordinator, and re-read before repeating mutations |

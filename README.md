@@ -232,8 +232,9 @@ The local HTTP API can submit, list, read and process queue entries. Processing
 runs the configured JSON command array without a shell in a dedicated worktree,
 with a 240-second timeout, and refuses with `409 checks_not_configured` when no
 command is configured. Only the project owner can name a repository or branch in
-a request. A queue entry can currently be merged without a prior accepted-patch
-record; that gate is not yet required by the queue.
+a request. A queue entry requires a prior accepted-patch record: the publication
+gate is the authority for what may be merged, and it is rechecked immediately
+before the merge.
 See the exact routes and payloads in [the protocol](docs/PROTOCOL.md).
 
 ## AI accounts and API keys
@@ -320,7 +321,7 @@ python scripts/cshcli.py --help
 python scripts/guard_secrets.py --all
 ```
 
-The current Windows run passes 537 tests with 5 explicit skips for unavailable
+The current Windows run passes 541 tests with 5 explicit skips for unavailable
 POSIX symbolic-link/file-permission guarantees and real PostgreSQL. The tests
 use real SQLite, local HTTP, Git, and provider fixtures. The synchronised
 races pit eleven agents from two people against the same resource, memory

@@ -9,7 +9,9 @@ from pathlib import Path
 from threading import Thread
 from unittest import mock
 
+from cshcli.integration import IntegrationGate
 from cshcli.server import make_server
+from cshcli.store import Store
 
 
 class QueueRouteTests(unittest.TestCase):
@@ -43,6 +45,7 @@ class QueueRouteTests(unittest.TestCase):
 
         _, created = self._call("POST", "/v1/users", {"name": "ana"})
         self.token = created["data"]["token"]
+        self.user = created["data"]["id"]
         _, project = self._call("POST", "/v1/projects", {"name": "demo"}, self.token)
         self.project = project["data"]["id"]
 
@@ -73,6 +76,24 @@ class QueueRouteTests(unittest.TestCase):
         self._git("commit", "-qm", message)
         return self._git("rev-parse", "HEAD").strip()
 
+    def accept(self, commit_sha, base_sha=None):
+        store = Store(self.root / "c.sqlite3")
+        held = store.acquire_leases(self.user, self.project, "agent-1",
+                                    ["file:app.py"], ttl=3600)
+        IntegrationGate(store).accept_patch(
+            self.user, self.project, f"run-{commit_sha}",
+            store.authorization_generation(self.user, self.project),
+            {item["resource"]: item["fence"] for item in held},
+            base_sha or self.base, commit_sha, ["file:app.py"])
+        for lease in held:
+            store.release_lease(self.user, self.project, lease["id"], lease["fence"])
+
+    def queue_commit(self, commit_sha, base_sha=None, **extra):
+        self.accept(commit_sha, base_sha)
+        body = {"commit_sha": commit_sha, "base_sha": base_sha or self.base}
+        body.update(extra)
+        return self._call("POST", f"/v1/projects/{self.project}/queue", body, self.token)
+
     def test_queueing_without_a_repository_is_refused(self):
         os.environ.pop("CSHCLI_REPOSITORY", None)
         status, payload = self._call("POST", f"/v1/projects/{self.project}/queue",
@@ -83,9 +104,7 @@ class QueueRouteTests(unittest.TestCase):
 
     def test_a_commit_is_queued_and_listed(self):
         sha = self.new_commit("value = 2\n", "change")
-        status, payload = self._call("POST", f"/v1/projects/{self.project}/queue",
-                                     {"commit_sha": sha, "base_sha": self.base,
-                                      "repository": str(self.repository)}, self.token)
+        status, payload = self.queue_commit(sha, repository=str(self.repository))
         self.assertEqual(status, 201)
         entry = payload["data"]
         self.assertEqual(entry["state"], "queued")
@@ -96,10 +115,8 @@ class QueueRouteTests(unittest.TestCase):
 
     def test_the_same_commit_is_queued_once(self):
         sha = self.new_commit("value = 3\n", "change")
-        body = {"commit_sha": sha, "base_sha": self.base,
-                "repository": str(self.repository)}
-        first = self._call("POST", f"/v1/projects/{self.project}/queue", body, self.token)
-        second = self._call("POST", f"/v1/projects/{self.project}/queue", body, self.token)
+        first = self.queue_commit(sha, repository=str(self.repository))
+        second = self.queue_commit(sha, repository=str(self.repository))
         self.assertEqual(first[0], 201)
         self.assertEqual(first[1]["data"]["id"], second[1]["data"]["id"])
 
@@ -112,9 +129,7 @@ class QueueRouteTests(unittest.TestCase):
 
     def test_processing_advances_the_integration_branch(self):
         sha = self.new_commit("value = 4\n", "change")
-        self._call("POST", f"/v1/projects/{self.project}/queue",
-                   {"commit_sha": sha, "base_sha": self.base,
-                    "repository": str(self.repository)}, self.token)
+        self.queue_commit(sha, repository=str(self.repository))
         command = json.dumps([sys.executable, "-c", "raise SystemExit(0)"])
         with mock.patch.dict(os.environ, {"CSHCLI_INTEGRATION_CHECK": command}):
             status, payload = self._call(
@@ -127,9 +142,7 @@ class QueueRouteTests(unittest.TestCase):
 
     def test_processing_without_checks_is_refused(self):
         sha = self.new_commit("value = 4\n", "change")
-        self._call("POST", f"/v1/projects/{self.project}/queue",
-                   {"commit_sha": sha, "base_sha": self.base,
-                    "repository": str(self.repository)}, self.token)
+        self.queue_commit(sha, repository=str(self.repository))
         status, payload = self._call(
             "POST", f"/v1/projects/{self.project}/queue/next",
             {"repository": str(self.repository)}, self.token)
@@ -145,9 +158,8 @@ class QueueRouteTests(unittest.TestCase):
 
     def test_a_queue_entry_can_be_read_by_id(self):
         sha = self.new_commit("value = 5\n", "change")
-        created = self._call("POST", f"/v1/projects/{self.project}/queue",
-                             {"commit_sha": sha, "base_sha": self.base,
-                              "repository": str(self.repository)}, self.token)[1]["data"]
+        created = self.queue_commit(
+            sha, repository=str(self.repository))[1]["data"]
         status, payload = self._call(
             "GET", f"/v1/projects/{self.project}/queue/{created['id']}", None, self.token)
         self.assertEqual(status, 200)
@@ -155,9 +167,8 @@ class QueueRouteTests(unittest.TestCase):
 
     def test_a_queue_entry_cannot_be_read_through_another_project(self):
         sha = self.new_commit("value = 6\n", "change")
-        created = self._call("POST", f"/v1/projects/{self.project}/queue",
-                             {"commit_sha": sha, "base_sha": self.base,
-                              "repository": str(self.repository)}, self.token)[1]["data"]
+        created = self.queue_commit(
+            sha, repository=str(self.repository))[1]["data"]
         _, second = self._call("POST", "/v1/projects", {"name": "other"}, self.token)
         status, payload = self._call(
             "GET", f"/v1/projects/{second['data']['id']}/queue/{created['id']}",
@@ -192,10 +203,17 @@ class QueueRouteTests(unittest.TestCase):
         os.environ["CSHCLI_REPOSITORY"] = str(self.repository)
         self.addCleanup(os.environ.pop, "CSHCLI_REPOSITORY", None)
         sha = self.new_commit("value = 6\n", "change")
-        status, payload = self._call("POST", f"/v1/projects/{self.project}/queue",
-                                     {"commit_sha": sha, "base_sha": self.base}, self.token)
+        status, payload = self.queue_commit(sha)
         self.assertEqual(status, 201)
         self.assertEqual(payload["data"]["state"], "queued")
+
+    def test_a_commit_no_gate_accepted_is_refused_over_http(self):
+        sha = self.new_commit("value = 8\n", "change")
+        status, payload = self._call("POST", f"/v1/projects/{self.project}/queue",
+                                     {"commit_sha": sha, "base_sha": self.base,
+                                      "repository": str(self.repository)}, self.token)
+        self.assertEqual(status, 409)
+        self.assertEqual(payload["error"]["code"], "patch_not_accepted")
 
     def test_an_invalid_check_command_only_blocks_processing(self):
         os.environ["CSHCLI_INTEGRATION_CHECK"] = "not-json"

@@ -245,8 +245,8 @@ leaves the item failed. None of those paths is a silent merge.
 This is still local Git integration, not a multi-host worker. Only the owner may
 name a repository path per request, because the coordinator is loopback-only;
 a non-owner cannot. Do not publish this pilot through a tunnel or reverse proxy.
-A queue entry can currently be merged without a prior accepted-patch record;
-the acceptance gate is not yet required by the queue.
+A queue entry requires a prior accepted-patch record, so the publication gate is
+what decides what may be merged.
 
 ## Coordinate deployments
 
@@ -271,7 +271,7 @@ python -m compileall -q src tests scripts
 python scripts/cshcli.py --help
 ```
 
-The current Windows run passes 537 tests with 5 explicit skips for unavailable
+The current Windows run passes 541 tests with 5 explicit skips for unavailable
 POSIX symbolic-link/file-permission guarantees and real PostgreSQL. The tests
 use real SQLite, local HTTP, Git, and provider fixtures. The synchronised
 races pit eleven agents from two people against the same resource, memory

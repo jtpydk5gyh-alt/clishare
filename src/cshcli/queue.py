@@ -60,6 +60,7 @@ class IntegrationQueue:
         now = self.clock()
         identifier = str(uuid.uuid4())
         with self.store._connection(write=True) as connection:
+            self._require_accepted(connection, project_id, commit_sha, base_sha)
             existing = connection.execute(
                 "SELECT * FROM integration_queue WHERE project_id = ? AND commit_sha = ?",
                 (project_id, commit_sha)).fetchone()
@@ -116,6 +117,8 @@ class IntegrationQueue:
         with self.store._connection() as connection:
             row = connection.execute("SELECT * FROM integration_queue WHERE id = ?",
                                      (identifier,)).fetchone()
+            self._require_accepted(connection, row["project_id"], row["commit_sha"],
+                                   row["base_sha"])
         project_id, commit_sha = row["project_id"], row["commit_sha"]
         observed = self._branch_sha()
         if observed is None:
@@ -169,6 +172,20 @@ class IntegrationQueue:
         if owner is None:
             raise DomainError(404, "project_not_found", "Project does not exist.")
         return owner["user_id"]
+
+    def _require_accepted(self, connection, project_id: str, commit_sha: str,
+                      base_sha: str) -> None:
+        accepted = connection.execute(
+            "SELECT base_sha FROM accepted_patches WHERE project_id = ? AND commit_sha = ?",
+            (project_id, commit_sha)).fetchone()
+        if accepted is None:
+            raise DomainError(
+                409, "patch_not_accepted",
+                "Only a patch accepted by the publication gate can enter the queue.")
+        if accepted["base_sha"] != base_sha:
+            raise DomainError(
+                409, "patch_base_mismatch",
+                "The patch was accepted with a different base.")
 
     def _repository(self) -> Path:
         if self.repository is None:
