@@ -4,7 +4,7 @@ AI CLI with personal credentials and shared project coordination. The idea: you
 create a project, invite other people, and everyone works with their own agents
 and AI accounts while sharing decisions and reserving files.
 
-**Status: local 0.7.0 pilot.** The CLI, local HTTP coordinator, SQLite, projects,
+**Status: local 0.8.0 pilot.** The CLI, local HTTP coordinator, SQLite, projects,
 invitations, versioned memory, leases, text-based AI adapters, mediated runner,
 automatic worktrees, task DAG, local integration queue, deployment coordination,
 usage and budgets are in place. The remote multi-user service and a real cloud
@@ -48,7 +48,7 @@ exit. Your name, current project, provider and token are kept in
 Once the session is ready, `cshcli` on its own opens a chat:
 
 ```text
-  ana · demo · openai    /ver <archivo> para leer, /limpiar, /salir para salir
+  ana · demo · openai    /buscar <texto>, /ver <archivo>, /limpiar, /salir para salir
 
 > _
 ```
@@ -86,10 +86,27 @@ block, so the agent can work on the real thing:
 > /ver src/cshcli/cli.py
 ```
 
-Reading goes through the same path checks the mediated runner uses: absolute
-paths, `..`, Git metadata, symbolic links, Windows junctions and hard links are
-refused, and a file that is not text is refused rather than sent as noise.
-Nothing outside the folder is reachable, and no command is ever executed.
+`/buscar <texto>` finds where something lives before deciding which file to
+open:
+
+```text
+> /buscar accept_patch
+5 de 12 coincidencias de 'accept_patch' en el proyecto actual; 7 más
+- src/cshcli/integration.py:88:     def accept_patch(self, run_id, base_sha, commit_sha, generation=1,
+- src/cshcli/integration.py:91:         if not self._store.validate_fence(...):
+Usa /ver <ruta> para ver el archivo entero.
+```
+
+The search ignores case, visits the same files as the index, and reports how
+many hits were left out rather than pretending the list is complete. A query
+with no hits prints that and **does not call the provider**: there is nothing
+to say about it, and spending tokens to be told "nothing" helps nobody.
+
+`/buscar` and `/ver` both go through the same path checks the mediated runner
+uses: absolute paths, `..`, Git metadata, symbolic links, Windows junctions and
+hard links are refused, and a file that is not text is refused rather than sent
+as noise. Nothing outside the folder is reachable, and no command is ever
+executed.
 
 The memory block is capped at 8000 characters. `/limpiar` clears the conversation and lets the context reach the next question
 again. `/salir`, `/quit` or Ctrl-D leaves. A provider error is printed and the

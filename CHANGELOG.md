@@ -7,6 +7,37 @@ once it leaves alpha.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-16
+
+The chat can search the project before it opens anything.
+
+### Added
+- `/buscar <texto>` finds where something lives and puts the hits into the
+  conversation as `ruta:línea: texto`. The search ignores case, visits exactly
+  the files the index lists, caps the answer at 4000 characters and 20 hits per
+  line shown, and reports how many hits were left out.
+- `cshcli.knowledge.search_text`. It reads through `Workspace`, so a symbolic
+  link, a Windows junction or a hard link pointing outside the folder is never
+  opened, a binary is skipped rather than searched, and `.git`,
+  `__pycache__`, `node_modules` and `dist` are not searched at all.
+- `run_loop` takes an optional `search`. With no searcher behind it, `/buscar`
+  is refused rather than sent to a provider as if it were a question.
+
+### Changed
+- The index and the search share one traversal. `_walk` replaces the copy that
+  lived inside `index_text`, so the two can no longer drift apart and quietly
+  disagree about what a project contains.
+- The chat banner now reads `/buscar <texto>, /ver <archivo>, /limpiar, /salir`.
+
+### Fixed
+- A search with no hits no longer calls the provider. It prints that the project
+  does not contain the text and the loop continues. Paying for an answer whose
+  content is already known is spending for nothing.
+
+**Not verified:** no provider has been contacted, so what a model does with the
+hits is not known. That a query with no hits costs nothing is checked here,
+because that is decided locally.
+
 ## [0.7.0] - 2026-10-16
 
 The chat knows which project it is in.
