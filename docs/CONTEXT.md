@@ -244,7 +244,7 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | Módulo Python | `cshcli`, 24 módulos más `__init__` y `__main__`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 67, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 664 verdes; 26 omitidas con motivo: 20 necesitan `CSHCLI_REMOTE_DSN` y **se ejecutaron** contra PostgreSQL 16.2 |
+| Pruebas | 677 verdes; 26 omitidas con motivo: 20 necesitan `CSHCLI_REMOTE_DSN` y **se ejecutaron** contra PostgreSQL 16.2 |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
@@ -1286,5 +1286,5 @@ La otra observación del revisor **queda cerrada**: la puerta de aceptación es
 ahora obligatoria para la cola, con comprobación al encolar y antes de integrar.
 
 Cierre reproducible de esta tanda: las 13 pruebas HTTP de la cola pasan; la
-suite completa pasa con **605 tests en 332.530 s** y 7 omisiones justificadas.
+suite completa pasa con **677 tests en 410.211 s** y 26 omisiones justificadas, de las cuales veinte se ejecutaron aparte contra PostgreSQL 16.2.
 `compileall` sobre `src`, `tests` y `scripts` termina sin salida.
