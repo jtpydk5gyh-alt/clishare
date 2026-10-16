@@ -211,13 +211,6 @@ class GuardTests(unittest.TestCase):
             self.assertEqual(guard.identity_findings(), [])
 
     def test_the_staged_index_is_read_and_not_the_working_tree(self):
-        """The whole point of the guard: scan what git is about to record.
-
-        If it read the working tree, an agent that edits a file after staging
-        it would be judged on text that is never committed, while the staged
-        text reaches the remote unexamined. That is the exact shape of the
-        leak that reached a squash merge.
-        """
         with tempfile.TemporaryDirectory() as temp:
             repository = Path(temp)
             subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
@@ -238,7 +231,6 @@ class GuardTests(unittest.TestCase):
         self.assertIn("doc.md:1", output)
 
     def test_a_clean_index_is_not_blocked_by_a_dirty_working_tree(self):
-        """The opposite asymmetry: uncommitted edits must not fail the commit."""
         with tempfile.TemporaryDirectory() as temp:
             repository = Path(temp)
             subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
@@ -255,11 +247,6 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, output)
 
     def test_committed_text_builds_a_valid_git_spec(self):
-        """A colon-prefixed revision must not be given a second colon.
-
-        "::name" is rejected by git, and the rejection used to be read as
-        "content unavailable", which sent the guard to the working tree.
-        """
         built = []
 
         def capture(command, **keywords):
@@ -293,7 +280,6 @@ class GuardTests(unittest.TestCase):
         self.assertIsNone(head_missing)
 
     def test_an_unreadable_index_is_refused_rather_than_substituted(self):
-        """Falling back to the working tree is how the guard failed open."""
         with tempfile.TemporaryDirectory() as temp:
             repository = Path(temp)
             subprocess.run(["git", "init", "-q"], cwd=repository, check=True)

@@ -1,24 +1,3 @@
-"""Killing things and checking that the state survives.
-
-The plan asks for drills that stop the coordinator, lose the network and kill a
-worker mid-deployment, and require that it recovers with fences, idempotence
-and persisted state. Some of that needs a real machine and a real provider and
-is declared unverified in STATUS.md. What can be done here is done for real,
-against a real SQLite file and a real HTTP server, and the line between the two
-is drawn explicitly rather than blurred.
-
-What these drills actually break:
-
-- the coordinator is stopped while a task is `running`, and the task is still
-  `running` after it comes back;
-- a worker's lease expires mid-run and a second agent takes the resource;
-- an operator kills a process holding a SQLite write transaction and the
-  database is still readable and consistent afterwards;
-- a deployment is interrupted and re-running it does not duplicate the effect.
-
-What they cannot prove is listed at the top of each class that needs more.
-"""
-
 import http.client
 import os
 import signal
@@ -67,6 +46,7 @@ class CoordinatorOutageTests(unittest.TestCase):
         thread.start()
         self.addCleanup(coordinator.server_close)
         self.addCleanup(thread.join, 5)
+        self.addCleanup(coordinator.shutdown)
 
         task = self.tasks.create(self.ana["id"], self.project["id"], "long job", None, ["file:src"])
         self.tasks.claim(self.ana["id"], self.project["id"], task["id"], "agent-1")
@@ -90,6 +70,7 @@ class CoordinatorOutageTests(unittest.TestCase):
         thread.start()
         self.addCleanup(coordinator.server_close)
         self.addCleanup(thread.join, 5)
+        self.addCleanup(coordinator.shutdown)
 
         connection = http.client.HTTPConnection("127.0.0.1", coordinator.server_address[1],
                                                 timeout=5)
@@ -110,6 +91,7 @@ class CoordinatorOutageTests(unittest.TestCase):
         second.start()
         self.addCleanup(again.server_close)
         self.addCleanup(second.join, 5)
+        self.addCleanup(again.shutdown)
 
         connection = http.client.HTTPConnection("127.0.0.1", again.server_address[1], timeout=5)
         token = created["data"]["token"]
@@ -130,7 +112,6 @@ class CoordinatorOutageTests(unittest.TestCase):
             return connection.execute("SELECT id FROM projects").fetchall()
 
     def test_a_separate_process_reads_what_this_one_wrote(self):
-        """A real boundary: state written here must be readable from elsewhere."""
         self.store.create_project(self.ana["id"], "written-here")
         script = (
             "import sqlite3,sys;"

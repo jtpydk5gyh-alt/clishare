@@ -9,16 +9,19 @@ from urllib.parse import urlencode
 from . import __version__, providers, updater
 from .client import Client
 from .errors import DomainError
-from .onboarding import PROVIDER_VARIABLES, Keyring, next_step
+from .local import connect, database_path, session_root
+from .onboarding import PROVIDER_VARIABLES, Keyring, run_wizard
 from .server import make_server
+from .session import Session
 
 
 def parser():
     root = argparse.ArgumentParser(prog="cshcli", description="IA personal y coordinación compartida de proyectos (piloto local).")
     root.add_argument("--version", action="version", version=__version__)
-    root.add_argument("--url", default=os.environ.get("CSHCLI_URL", "http://127.0.0.1:8765"), help="URL base del coordinador, o CSHCLI_URL")
+    root.add_argument("--url", default=os.environ.get("CSHCLI_URL"),
+                      help="URL del coordinador compartido; sin esto se usa uno local efímero")
     commands = root.add_subparsers(dest="command")
-    start = commands.add_parser("start", help="Primera ejecución: dice qué falta y lo hace")
+    start = commands.add_parser("start", help="Primera ejecución: menú de sesión o proyecto compartido")
     start.add_argument("--provider", default="openai", help="Proveedor a configurar")
     key = commands.add_parser("key", help="Guardar una clave de proveedor fuera del entorno")
     key_commands = key.add_subparsers(dest="action", required=True)
@@ -30,7 +33,7 @@ def parser():
     key_commands.add_parser("drop", help="Borrar la clave de un proveedor").add_argument("provider")
     update = commands.add_parser("update", help="Ver si hay una versión nueva; instala solo con permiso")
     update.add_argument("--apply", action="store_true", help="Instalar, pidiendo escribir la versión")
-    commands.required = True
+    commands.required = False
     serve = commands.add_parser("serve", help="Arrancar el coordinador piloto en loopback")
     serve.add_argument("--db", default=".cshcli/coordinator.sqlite3")
     serve.add_argument("--host", choices=["127.0.0.1", "localhost"], default="127.0.0.1")
@@ -147,11 +150,18 @@ def emit(value):
 
 
 def _keyring():
-    return Keyring(Path(os.environ.get("CSHCLI_HOME", ".cshcli")))
+    return Keyring(session_root())
 
 
-def _client(args):
-    return Client(args.url, os.environ.get("CSHCLI_TOKEN"))
+def _session():
+    return Session(session_root())
+
+
+def _connect(args):
+    session = _session()
+    token = os.environ.get("CSHCLI_TOKEN") or session.token
+    client, closers = connect(args.url, token, database_path())
+    return client, closers, session
 
 
 def _key(args):
@@ -178,28 +188,11 @@ def _key(args):
     return 0 if report["configured"] else 1
 
 
-def _start(client, args):
-    """Says what is missing, and stops when there is nothing left to ask."""
-    store_ready = identity = project = False
-    try:
-        listing = client.request("GET", "/v1/projects")
-        store_ready = True
-        identity = True
-        project = bool(listing.get("projects"))
-    except DomainError as error:
-        if error.status != 503:
-            raise
-    secret, _ = _keyring().resolve(args.provider)
-    step = next_step(store_ready, identity, project, args.provider, secret is not None)
-    print(f"\n{step['detail']}\n")
-    if step["question"]:
-        print(f"  {step['question']}\n")
-    print(f"  siguiente: {step['do']}\n")
-    return 0
+def _start(client, session, args):
+    return run_wizard(client, session, _keyring())
 
 
 def _update(args):
-    """Compares and reports. Changes nothing without `--apply` and a typed version."""
     try:
         published = updater.newest_remote_version()
     except updater.UpdateUnavailable as reason:
@@ -233,17 +226,6 @@ def _update(args):
 
 
 def _serve_remote(args):
-    """Checks a remote configuration and refuses to start without TLS.
-
-    The client already refuses plain HTTP to a non-loopback host, so serving
-    one is pointless as well as unsafe: nobody could connect. Starting a
-    coordinator on loopback with a remote DSN would be worse, because it would
-    look like a remote service and behave like a local one.
-
-    What this cannot do is bring PostgreSQL up. It checks what is configured
-    and says what is missing, rather than starting something that would fail
-    later with a connection error.
-    """
     dsn = os.environ.get("CSHCLI_REMOTE_DSN", "")
     certificate = os.environ.get("CSHCLI_TLS_CERT", "")
     report = {"dsn": bool(dsn), "tls_certificate": bool(certificate),
@@ -269,17 +251,16 @@ def _serve_remote(args):
 
 
 def execute(args):
+    if args.command is None:
+        args.command = "start"
     if args.command == "key":
         return _key(args)
     if args.command == "update":
         return _update(args)
-    if args.command == "start":
-        return _start(_client(args), args)
     if args.command == "serve":
         if getattr(args, "remote", False):
             return _serve_remote(args)
-    if args.command == "serve":
-        server = make_server(Path(args.db), args.host, args.port)
+        server = make_server(database_path(), args.host, args.port)
         print(f"CSHCLI piloto local: http://{args.host}:{server.server_port}", file=sys.stderr)
         print("Las reservas son cooperativas. El runner aislado se implementa en el siguiente hito.", file=sys.stderr)
         try:
@@ -295,10 +276,23 @@ def execute(args):
     if args.command == "chat":
         print(providers.chat(args.provider, args.model, args.prompt))
         return 0
-    token = os.environ.get("CSHCLI_TOKEN")
-    if not token and args.command != "auth":
-        raise DomainError(401, "authentication_required", "Define CSHCLI_TOKEN con tu token de colaboración.")
-    client = Client(args.url, token)
+    if args.command in {"auth", "start"}:
+        client, closers, session = _connect(args)
+    else:
+        if not (os.environ.get("CSHCLI_TOKEN") or _session().token):
+            raise DomainError(401, "authentication_required",
+                              "Ejecuta 'cshcli start' para crear tu identidad, o define CSHCLI_TOKEN.")
+        client, closers, session = _connect(args)
+    try:
+        if args.command == "start":
+            return _start(client, session, args)
+        return _dispatch(client, args)
+    finally:
+        for closer in closers:
+            closer.close()
+
+
+def _dispatch(client, args):
     if args.command == "auth":
         result = client.request("POST", "/v1/users", {"name": args.name})
     elif args.command == "project":

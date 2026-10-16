@@ -1,15 +1,3 @@
-"""Installs the personal data guard as a local pre-commit hook.
-
-    python scripts/install_hooks.py
-
-The hook is not tracked by git: it belongs to your machine, like the other
-local rules. It runs the guard against the staged content on every commit.
-
-An existing hook is never overwritten. If one is already installed, this
-refuses and says so rather than silently replacing a hook you may have
-written yourself.
-"""
-
 from __future__ import annotations
 
 import shlex

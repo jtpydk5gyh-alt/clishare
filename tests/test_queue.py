@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from cshcli.errors import DomainError
-from cshcli.queue import FAILED, MERGED, QUEUED, REVIEW, IntegrationQueue
+from cshcli.queue import FAILED, MERGED, QUEUED, REVIEW, IntegrationQueue, _Checkout
 from cshcli.store import Store
 
 
@@ -53,7 +53,6 @@ class QueueTests(unittest.TestCase):
         return self.head()
 
     def worktree(self, name, content, message):
-        """Commits on top of the base and returns to the base afterwards."""
         original = self.head()
         self.commit(name, content, message)
         sha = self.head()
@@ -154,6 +153,26 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(result["merge_sha"], None)
         self.assertEqual(self.branch_sha(), elsewhere,
                          "the branch keeps someone else's work, untouched")
+
+    def test_a_branch_that_moves_before_the_update_is_not_overwritten(self):
+        sha = self.worktree("app.py", "def total(items):\n    return 12\n", "fix")
+        self.submit(sha)
+        elsewhere = self.commit("test_app.py", "def check():\n    return 0\n", "someone else")
+        original = _Checkout.push_fast_forward
+
+        def moves_after_the_check(self, expected, tested):
+            subprocess.run(["git", "update-ref", "refs/heads/integration", elsewhere],
+                           cwd=self.repository, check=True)
+            return original(self, expected, tested)
+
+        _Checkout.push_fast_forward = moves_after_the_check
+        self.addCleanup(setattr, _Checkout, "push_fast_forward", original)
+        result = self.queue.process_next(self.project["id"])
+        self.assertEqual(result["state"], REVIEW)
+        self.assertIsNone(result["merge_sha"])
+        self.assertIn("moved", result["detail"])
+        self.assertEqual(self.branch_sha(), elsewhere,
+                         "the compare-and-swap refuses instead of overwriting")
 
     def test_a_revoked_author_suspends_the_queue(self):
         sha = self.worktree("app.py", "def total(items):\n    return 3\n", "fix")

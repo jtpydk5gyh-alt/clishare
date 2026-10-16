@@ -1,18 +1,3 @@
-"""Sessions with an expiry and a revocation that a running job cannot ignore.
-
-The local pilot issues one permanent token per user at registration. That is
-fine while the coordinator is a loopback process nobody else can reach, and
-unacceptable the moment it answers over a network: there is no way to end one
-session without ending every session, and no way to tell a revoked agent apart
-from an agent that simply never came back.
-
-A session here is a value with a hash, an expiry and a row that can be
-deleted. Authentication compares hashes and never stores the token. Revocation
-bumps `authorization_generation` for the member and agent, so work that was
-queued before the revocation still holds an authorisation that no longer
-matches when it finally tries to act.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -129,11 +114,6 @@ class Identity:
 
     def assert_authorized(self, user_id: str, project_id: str, generation: int,
                           agent_id: str | None = None) -> None:
-        """Refuses work that was queued before a revocation.
-
-        This is the check the plan asks for on a queued merge or a deploy
-        waiting for approval: the artefacts survive, and nothing new happens.
-        """
         current = self.authorization_generation(user_id, project_id, agent_id)
         if type(generation) is not int:
             raise DomainError(400, "invalid_generation", "authorization_generation must be an integer.")

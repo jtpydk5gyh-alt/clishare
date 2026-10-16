@@ -1,23 +1,3 @@
-"""The four checks the plan's acceptance line asks for, against a real destination.
-
-`test_deploy.py` proves the coordination against an in-process object. That
-object cannot lose an answer, cannot refuse a connection, and cannot be stopped
-by anything the worker does, so it cannot prove recovery.
-
-Here the destination is a separate process writing to a directory, and health
-is a real HTTP request to a localhost server. The four failures the plan names
-are induced by doing the thing, not by raising a flag:
-
-- a staging deploy, against a process that outlives the worker;
-- a health failure, by stopping the server, so the failure is a refused
-  connection;
-- a rollback, against that same process;
-- an idempotent re-send, with the same key and the same payload.
-
-Nothing here contacts a cloud provider. What it proves is that the worker's
-failure handling survives a destination that fails the way real ones fail.
-"""
-
 import tempfile
 import unittest
 from pathlib import Path

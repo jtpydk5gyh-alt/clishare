@@ -1,6 +1,6 @@
 # Verified status of CSHCLI
 
-Date: 15 October 2026. Version **0.2.0**, released with `dist/SHA256SUMS`.
+Date: 16 October 2026. Version **0.4.0**, built locally with `dist/SHA256SUMS` but not published or signed.
 Current priority: the [online plan](PLAN-ONLINE.md), whose first three steps
 can be done here. The product plan lives in
 [the main document](superpowers/plans/2026-10-14-cshcli.md).
@@ -14,9 +14,10 @@ says so and the reason is in [OPERATIONS.md](OPERATIONS.md),
 
 | Capability | Observed status |
 | --- | --- |
-| Runnable CLI from source | Help and 0.3.0 version verified |
+| Runnable CLI from source | Help and 0.4.0 version verified |
 | Update check | `cshcli update` compares and reports without changing anything. `--apply` needs the version typed and verifies the checksum first. Tested with a fake transport; **no real download has been performed** |
-| First run without instructions | `cshcli start` says what is missing, in order, and names the exact command for it. `cshcli key set` stores a provider key outside the environment. Tested with a mocked coordinator |
+| First run without instructions | `cshcli start` is a two-option menu that performs the setup: a private session, or joining with an invitation code or creating a shared project. No server is started first: the coordinator is implicit. `cshcli key set` stores a provider key outside the environment. Tested end to end through the real CLI entry point |
+| Coordinator lifetime | A command with no reachable coordinator runs one inside its own process on an ephemeral port and closes it on exit. Identity, current project and token live in `.cshcli/session.json`, so later commands need no `--url` and no token. Two embedded coordinators over one database are tested. `cshcli serve` still provides a long-lived one |
 | Key storage | `Keyring` in `.cshcli/keys.json`, readable only by the user on POSIX. A key set in the environment wins over one on disk, because whoever exported it knows what they are doing. Nothing ever prints a key |
 | Published artefact | Wheel builds, `SHA256SUMS` written, and the **installed** copy imports and answers `--help` on Python 3.12.10, Windows. **Not signed, not published, not checked on other platforms** |
 | Local HTTP and SQLite WAL | Two-identity flow tested with a real server |
@@ -33,7 +34,7 @@ says so and the reason is in [OPERATIONS.md](OPERATIONS.md),
 | Mediated runner (6C) | `Runner` validates the lease immediately before every write, stops on heartbeat loss, and exposes no command execution |
 | Sandbox | **Not a sandbox.** No CPU, memory, process or network limits. Arbitrary execution stays unimplemented by design |
 | Cross-machine service | **Not usable.** `cshcli serve --remote` checks the configuration and refuses to start without TLS and a PostgreSQL DSN, but **no server has been run**; see [OPERATIONS.md](OPERATIONS.md) |
-| Automatic Git integration | `IntegrationQueue` applies a patch in a dedicated worktree, recomputes the base, runs the checks on the composed result and advances the branch only through a compare-and-swap. **Not wired to HTTP or to the runner yet** |
+| Automatic Git integration | `IntegrationQueue` applies a patch in a dedicated worktree, recomputes the base, runs configured checks on the composed result and advances the branch only through a compare-and-swap. The local HTTP routes can submit, list, read and process entries. Processing fails closed unless `CSHCLI_INTEGRATION_CHECK` is configured. It is **not wired to the runner or a remote worker yet** |
 | Usage and budgets (11) | `Usage.record` with `Decimal`, currency, price date and unit; unknown costs stay `null` and are excluded from totals rather than zeroed. `authorize_run` never invents an estimate and refuses when usage is incomplete. Audit export states that retention is unconfigured |
 | Chaos drills (11) | **Local drills done.** Stopping the coordinator leaves a running task running, not silently finished; a dead agent's lease expires and a second agent takes the resource; the stale holder cannot renew or release the new lease; state written by one process is read by another; an aborted batch leaves nothing behind; a re-run of an interrupted deploy does not repeat the effect |
 | Restore (11) | **Drill done on the pilot database.** Backup, restore into an empty database, fence never goes backwards, a second restore over a populated target is refused. A **PostgreSQL** restore is still not proven: no server here |
@@ -45,20 +46,18 @@ says so and the reason is in [OPERATIONS.md](OPERATIONS.md),
 | Remote store (7) | PostgreSQL schema, row-locked acquisition and a refusal to serve while unverified. **No server has been run**; the concurrency test skips with its reason |
 | Built web | **Not published**, by decision of the owner. Ignored by git with the reason written next to it |
 | Task DAG (8B) | `TaskService` with seven states, cycle refusal on create and modify, and `claim` that acquires leases in the same transaction |
-| Integration queue (8B) | Serialised per project, dedicated worktree, recomputed base, checks on the composed result, and a compare-and-swap that only advances the branch if it did not move |
+| Integration queue (8B) | Serialised per project, dedicated worktree, recomputed base, configured checks on the composed result, and a compare-and-swap that only advances the branch if it did not move. Local HTTP routes expose submit, list, read and process; processing refuses to run without configured checks |
 | Branch governance | Ruleset `main-integrity`: no force-push, no deletion, no direct updates, and `Personal data guard` required to merge |
 
 ## Local evidence
 
-Observed environment: Windows, Python 3.12.14 from a local toolchain runtime. The
-system `python` alias points to WindowsApps and was not available in this
-session. Verification used a standard CPython 3.12 installation; the
-interpreter path is machine specific and is deliberately not recorded here.
+Observed environment: Windows with CPython 3.12.14. The interpreter path is
+machine specific and is deliberately not recorded here.
 
-With `PYTHONPATH=src`, the command `python -m unittest discover -s tests -v`
-returned **492 passing tests in 183 seconds**, with 5 skipped: two symbolic link
-cases on a host that does not grant the privilege, two PostgreSQL cases that
-need a real server which does not exist on this machine, and one POSIX file
+With `PYTHONPATH=src`, the command `python -m unittest discover -s tests`
+returned **537 passing tests in 337.217 seconds**, with 5 skipped: two symbolic
+link cases on a host that does not grant the privilege, two PostgreSQL cases
+that need a real server which does not exist on this machine, and one POSIX file
 permission case that does not apply on Windows. The Windows junction case runs.
 Concurrent tests use eleven synchronised threads and, for deployments, eleven
 processes against one environment; they do not yet represent eleven distributed
@@ -144,12 +143,13 @@ cannot be trusted to still guard.
 
 | Item | Possible here? |
 | --- | --- |
-| First run that needs no instructions, with a local key store | Yes |
-| Document the install command with its three caveats | Yes |
-| `cshcli update` that reports first and installs on consent with a checksum | Yes |
-| `cshcli serve --remote` over HTTPS with PostgreSQL | **No.** No server here |
+| First run that needs no instructions, with a local key store | Done. `cshcli start` is a two-option menu that performs the setup, and the coordinator is implicit, so no server is started |
+| Document the install command with its three caveats | Done |
+| `cshcli update` that reports first and installs on consent with a checksum | Done locally, with network doubles. Never exercised against a published release |
+| `cshcli serve --remote` over HTTPS with PostgreSQL | **No.** Validates and refuses; no server here |
 | Standing the remote coordinator up and proving real concurrency | **No.** No PostgreSQL |
-| Chaos drills and a proven restore | Partly. Local chaos yes, restore against a real database no |
-| Signing the release | **No.** No credentials |
+| Chaos drills and a proven restore | Partly. Local chaos drills and a real SQLite restore pass; PostgreSQL restore does not |
+| Signing and publishing the release | **No.** No credentials |
+| Requiring a queue entry to come from an accepted patch | **Not done.** The HTTP queue can merge a commit that never passed `IntegrationGate`; a known open gap |
 
 Each of these is a row above with its evidence, not a promise.

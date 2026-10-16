@@ -7,6 +7,11 @@ once it leaves alpha.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-16
+
+The first run was eight commands across two terminals, and `start` only printed
+what to run next. It is now one command that does the work.
+
 ### Security
 - The personal data guard now reads the **staged index** instead of the working
   tree. `committed_text` built the git spec as `f"{revision}:{name}"`, which for
@@ -23,6 +28,12 @@ once it leaves alpha.
   its restored ruleset keeps the required check.
 
 ### Fixed
+- The integration queue's compare-and-swap could not fail. `update-ref` ran with
+  the default `check=True`, so a branch that moved between the last read and the
+  update raised `CalledProcessError` instead of returning `None`. The "branch
+  moved before the update" outcome was unreachable and the race escaped as an
+  internal error rather than a review. It now returns `None` and settles to
+  `review`, leaving the other writer's commit intact.
 - A timeout during the **health check** of a deployment escaped as an unhandled
   exception instead of moving the deployment to `reconciling`. Only `promote`
   was protected. A destination that accepts a connection and never answers can
@@ -40,6 +51,22 @@ once it leaves alpha.
   noreply form.
 
 ### Added
+- `cshcli start` is now a menu that performs the setup instead of printing the
+  next command. Option 1 prepares a private session; option 2 joins with an
+  invitation code or creates a shared project and prints a code to share.
+- The coordinator is now implicit. When none is reachable, every command runs one
+  inside its own process on an ephemeral port and closes it on exit, so a single
+  user never starts or keeps a server. `cshcli serve` still provides a
+  long-lived coordinator, and `--url`/`CSHCLI_URL` still selects a shared one.
+- `.cshcli/session.json` stores the name, current project and token, so later
+  commands need neither `--url` nor `CSHCLI_TOKEN`.
+- Local HTTP routes for the integration queue: submit, list, read and process.
+  Queue writes require a writer or owner, reads require project membership, entry
+  lookup is scoped to the project, and only the owner may override `repository`
+  or `branch` in a request.
+- `CSHCLI_INTEGRATION_CHECK`, a JSON command array run without a shell in the
+  dedicated integration worktree with a 240-second timeout. Processing a
+  non-empty queue fails closed when no check command is configured.
 - Chaos drills that break real things locally: stopping the coordinator leaves
   a running task running rather than silently finishing it, a dead agent's lease
   expires and a second agent takes the resource, the stale holder cannot renew
@@ -62,10 +89,10 @@ once it leaves alpha.
   one on disk, because whoever exported it knows what they are doing. Nothing
   ever prints a key, and a test checks that asking about one provider does not
   reveal another's.
-- Recorded where the project actually stands: version 0.2.0, 46 commits, 423
-  tests, and a table that says for each remaining item whether it can be done
-  on this machine. The rule the document follows is that what cannot be checked
-  is stated, not implied.
+- Recorded where the project actually stands: version 0.3.0, 52 commits on
+  `origin/main`, 537 passing tests, and a table that says for each remaining
+  item whether it can be done on this machine. The document states what cannot
+  be checked instead of implying it.
 - `docs/STATUS.md` gained a "What is verified, and what is not" heading, a
   "Still to do" table, and the working rules that cost something to learn:
   never `reset --hard` without looking, never weaken a security control so
@@ -189,6 +216,11 @@ once it leaves alpha.
   `.gitignore` so it never reaches the public remote.
 
 ### Changed
+- The first run no longer needs a second terminal, four invocations of `start` or
+  a running `serve` before anything works.
+- Removed explanatory comments and docstrings from production code, tests and
+  maintenance scripts to restore the repository's owner style rule. Executable
+  multiline strings such as SQL schemas and child-process source remain data.
 - README, PLAN, USAGE, STATUS, REVIEW, PROTOCOL, OPEN_SOURCE, the superplan,
   and the design spec are now written in English.
 - `docs/ESTADO.md` was renamed to `docs/STATUS.md`.
@@ -208,14 +240,16 @@ once it leaves alpha.
   leaving `main` with a red suite.
 
 ### Verification
-- **212 tests pass**, 2 skipped where the host refuses symbolic links.
+- **537 tests pass**, with 5 explicit skips: two symbolic-link cases, two real
+  PostgreSQL cases, and one POSIX permission case on Windows.
 - **CI is active** and green on Windows and Linux with Python 3.11, 3.12 and
   3.13.
 
 ### Notes
-- This is an alpha pilot. The remote multi-user service, the sandboxed
-  runner, the integration queue and real deployments remain in the superplan
-  and have not been delivered.
+- This is an alpha pilot. The remote multi-user service and sandboxed arbitrary
+  execution remain in the superplan. The mediated runner, local integration
+  queue and deployment coordination exist, but no remote worker or cloud
+  destination has been exercised.
 - The `Workspace` boundary is a filesystem boundary, not a sandbox. It does not
   constrain an arbitrary command running inside the workspace.
 

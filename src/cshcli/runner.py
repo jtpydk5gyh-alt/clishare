@@ -1,25 +1,3 @@
-"""The runner mediates every write an agent makes.
-
-A runner owns one worktree and exposes a deliberately small surface: read a
-file, write a file, remove one, rename one. There is no method that runs a
-command, opens a socket or reaches outside its own workspace. That omission
-is the guarantee. On Windows and macOS nothing here is a container, and this
-module does not pretend otherwise; the plan puts arbitrary execution in a
-Linux container or VM with verified controls, and until that exists the
-runner admits reading, chat and worktree utilities only.
-
-Three rules hold for every operation:
-
-1. The lease is validated against the coordinator immediately before the
-   bytes move. A validated lease is a moment, not a permission, so the
-   publication gate checks again before anything lands.
-2. The workspace resolves the path. A runner cannot be pointed at the host,
-   at a neighbouring checkout, or through a symlink, because it never passes
-   a path anywhere the workspace has not already resolved and refused.
-3. A stopped runner writes nothing. Losing the heartbeat is not a warning,
-   it ends the run.
-"""
-
 from __future__ import annotations
 
 import time
@@ -107,11 +85,6 @@ class Runner:
         return not self.stopped and (self.clock() - self._last_beat) >= self.heartbeat_seconds
 
     def heartbeat(self) -> list[dict]:
-        """Renews every tracked lease, or stops the runner if any is gone.
-
-        A coordinator that cannot confirm a lease leaves the runner unable to
-        write, rather than writing on an assumption.
-        """
         if self.stopped:
             return []
         renewed = []

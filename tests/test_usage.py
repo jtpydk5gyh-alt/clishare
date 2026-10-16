@@ -90,7 +90,6 @@ class UsageTests(unittest.TestCase):
         self.assertEqual(total["records"], 1)
 
     def test_an_unpriced_call_stays_visible_to_a_budget(self):
-        """An unknown cost has to be counted as unknown, not dropped."""
         self.record(cost="1.00", currency="EUR", price_as_of="2026-10-15")
         self.record(provider="minimax")
         total = self.usage.total(self.project["id"], self.ana["id"], "EUR")

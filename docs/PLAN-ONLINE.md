@@ -27,9 +27,30 @@ el coordinador** y **una dirección a la que apunte el cliente**.
 | Hospedar el coordinador | Un servidor o un hosting con coste | **Viable**, es el camino de verdad |
 | Que cada persona monte el suyo | Docker y un servidor propio | **Viable**, y es el mismo código del segundo |
 
+### Paso 1 — Primera ejecución sin instrucciones — hecho
+
+`cshcli start` es un menú de dos opciones que hace el trabajo: **1) Sesión**
+prepara identidad, proyecto y clave; **2) Unirme o crear** entra con un código
+de invitación o crea un proyecto y da un código para compartir.
+
+El coordinador dejó de ser un proceso que el usuario arranca. Si no hay ninguno
+alcanzable, cada comando levanta el suyo en un puerto efímero y lo cierra al
+salir. `.cshcli/session.json` guarda nombre, proyecto y token, de modo que los
+comandos siguientes no necesitan `--url` ni `CSHCLI_TOKEN`. `cshcli serve` sigue
+existiendo para un coordinador compartido, y `--url`/`CSHCLI_URL` lo seleccionan.
+
+Lo que **no** está hecho es el bucle conversacional: escribir `cshcli` con una
+sesión lista todavía no abre un chat. Ese es el siguiente paso de simplicidad.
+
+### Paso 2 — La web
+
 El código del servidor **ya existe**: `src/cshcli/remote/`, el esquema en
-`migrations/001_remote.sql` y `deploy/compose.yaml`. Lo que falta es poder
-**levantarlo y probarlo**, y eso necesita una máquina que aquí no hay.
+`migrations/001_remote.sql` y `deploy/compose.yaml`. El piloto local también
+expone por HTTP la cola Git para enviar, listar, leer y procesar entradas; el
+procesado se niega sin un comando de checks configurado. Eso no cierra el paso
+online: la cola sigue operando sobre una ruta local y el servicio remoto aún no
+se ha levantado. Lo que falta es poder **levantarlo y probarlo**, y eso necesita
+una máquina que aquí no hay.
 
 **Decisión:** se construye un único comando, `cshcli serve --remote`, que
 levanta el coordinador sobre PostgreSQL detrás de HTTPS con la base en red

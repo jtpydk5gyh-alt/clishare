@@ -1,15 +1,4 @@
 #!/usr/bin/env python
-"""Empuja main reescribiendo la autoría de cualquier commit con la direccion
-privada antes de subirlo.
-
-Los squash de pull request heredan la autoria del commit de la rama, no la de
-main. Si esa rama se creo antes de fijar la identidad noreply, cada merge
-devuelve la direccion privada a la historia. Este helper lo evita sin tener
-que desactivar los rulesets.
-
-    python scripts/push_rewritten_main.py
-"""
-
 from __future__ import annotations
 
 import json
@@ -59,13 +48,6 @@ def lift_protection() -> list[str]:
 
 
 def restore_protection() -> None:
-    """Only main-integrity is recreated.
-
-    A second ruleset holding an `update` rule sat alongside it and blocked
-    every merge with "base branch policy prohibits the merge". Both rulesets
-    enforced the same thing, changes through a pull request; only one was
-    needed, and the duplicate was the one that deadlocked the repository.
-    """
     body = {"name": "main-integrity", "target": "branch", "enforcement": "active",
             "conditions": CONDITIONS, "bypass_actors": [], "rules": INTEGRITY_RULES}
     gh("api", "--method", "POST", f"repos/{REPOSITORY}/rulesets",

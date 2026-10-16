@@ -8,7 +8,6 @@ from pathlib import Path
 from unittest import mock
 
 from cshcli import cli
-from cshcli.errors import DomainError
 
 
 class CliKeyTests(unittest.TestCase):
@@ -73,63 +72,13 @@ class CliKeyTests(unittest.TestCase):
         code, _, _ = self.run_cli("key", "drop", "openai")
         self.assertEqual(code, 1)
 
-    def test_start_without_a_coordinator_points_at_serve(self):
-        with mock.patch.object(cli, "Client") as client:
-            client.return_value.request.side_effect = DomainError(
-                503, "coordinator_unavailable", "No se pudo conectar.")
-            code, out, _ = self.run_cli("start")
-        self.assertEqual(code, 0)
-        self.assertIn("cshcli serve", out)
-        self.assertIn("not running", out)
-
-    def test_start_without_an_identity_asks_for_a_name(self):
-        with mock.patch.object(cli, "Client") as client:
-            client.return_value.request.side_effect = DomainError(
-                401, "invalid_token", "No.")
-            code, out, err = self.run_cli("start")
+    def test_start_is_the_default_when_no_command_is_given(self):
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch("builtins.input", side_effect=EOFError), \
+             redirect_stdout(out), redirect_stderr(err):
+            code = cli.main([])
         self.assertEqual(code, 1)
-        self.assertIn("invalid_token", err)
-
-    def test_start_with_a_coordinator_but_no_project_asks_for_a_project(self):
-        with mock.patch.object(cli, "Client") as client:
-            client.return_value.request.return_value = {"projects": []}
-            code, out, _ = self.run_cli("start")
-        self.assertEqual(code, 0)
-        self.assertIn("project create", out)
-
-    def test_start_with_a_project_but_no_key_asks_for_the_key(self):
-        with mock.patch.object(cli, "Client") as client:
-            client.return_value.request.return_value = {"projects": [{"id": "p1"}]}
-            code, out, _ = self.run_cli("start", "--provider", "minimax")
-        self.assertEqual(code, 0)
-        self.assertIn("key set minimax", out)
-        self.assertIn("minimax", out)
-
-    def test_start_with_everything_present_says_it_is_ready(self):
-        with mock.patch.object(cli, "Client") as client:
-            client.return_value.request.return_value = {"projects": [{"id": "p1"}]}
-            with mock.patch("cshcli.cli.getpass.getpass", return_value="sk-example"):
-                self.run_cli("key", "set", "openai")
-            code, out, _ = self.run_cli("start")
-        self.assertEqual(code, 0)
-        self.assertIn("Todo listo", out)
-
-    def test_start_does_not_need_a_collaboration_token(self):
-        with mock.patch.object(cli, "Client") as client:
-            client.return_value.request.return_value = {"projects": []}
-            code, _, _ = self.run_cli("start")
-        self.assertEqual(code, 0)
-        client.assert_called_once()
-        self.assertIsNone(client.call_args[0][1])
-
-    def test_start_reports_a_permission_error_instead_of_guessing(self):
-        with mock.patch.object(cli, "Client") as client:
-            client.return_value.request.side_effect = DomainError(
-                401, "invalid_token", "No.")
-            code, out, err = self.run_cli("start")
-        self.assertEqual(code, 1)
-        self.assertIn("invalid_token", err)
-        self.assertEqual(out.strip(), "", "an error must not also print a next step")
+        self.assertIn("input_required", err.getvalue())
 
 
 if __name__ == "__main__":

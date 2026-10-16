@@ -147,7 +147,6 @@ class IntegrationGate:
         }
 
     def verify_with_git(self, repo: Path, base_sha: str, commit_sha: str) -> dict:
-        """Checks the two commits exist and reports what the head actually touches."""
         repository = Path(repo)
         if not (repository / ".git").exists():
             raise DomainError(400, "repo_missing", "The repository path has no .git directory.")

@@ -117,7 +117,9 @@ class CliTests(unittest.TestCase):
                     response = HTTPError("http://127.0.0.1/", response_status, "unavailable", {}, io.BytesIO())
                     effect = {"side_effect": response}
                 with patch.object(response, "read", side_effect=failure), patch("urllib.request.OpenerDirector.open", **effect):
-                    code, _, errors = self.invoke(["project", "list"], {"CSHCLI_TOKEN": "fixture"})
+                    code, _, errors = self.invoke(
+                        ["project", "list"],
+                        {"CSHCLI_TOKEN": "fixture", "CSHCLI_URL": "http://127.0.0.1:8765"})
                 self.assertEqual(code, 1)
                 self.assertEqual(json.loads(errors)["error"]["code"], expected)
 

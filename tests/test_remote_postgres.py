@@ -1,16 +1,3 @@
-"""The concurrency test the plan forbids mocking.
-
-Against a real PostgreSQL this launches eleven independent processes that race
-for `file:src` and `file:src/a.py`, and requires exactly one winner. A mock
-would prove nothing about `SELECT ... FOR UPDATE`, so when no server is
-reachable this test skips and says so. Deleting it or replacing it with a mock
-would be the one thing the plan explicitly prohibits.
-
-Run it with:
-
-    CSHCLI_REMOTE_DSN=postgresql://... python -m unittest tests.test_remote_postgres
-"""
-
 import multiprocessing
 import os
 import unittest
@@ -30,7 +17,7 @@ def _race(dsn, project_id, agent_id, resources, queue):
         queue.put(("won", agent_id, [item["resource"] for item in acquired]))
     except DomainError as error:
         queue.put(("lost", agent_id, error.code))
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         queue.put(("error", agent_id, type(error).__name__))
 
 

@@ -1,13 +1,3 @@
-"""Fails when a tracked file would publish personal data.
-
-Run it before every commit and in CI. It scans the files that git is about to
-record, not the working tree, so an unrelated local file cannot fail the build.
-
-    python scripts/guard_secrets.py            # staged changes
-    python scripts/guard_secrets.py --all      # everything tracked
-    python scripts/guard_secrets.py --staged FILE...
-"""
-
 from __future__ import annotations
 
 import re
@@ -18,8 +8,6 @@ from pathlib import Path
 
 ALLOWED_EMAIL = "jtpydk5gyh-alt@users.noreply.github.com"
 
-# The guard's own tests must contain the shapes they look for. This is the only
-# exemption, it is explicit, and it is scoped to that one file.
 SELF_EXEMPT = {"tests/test_guard.py"}
 
 PATTERNS = (
@@ -50,12 +38,6 @@ def tracked_files(include_all: bool, explicit: list[str]) -> list[str]:
 
 
 def committed_text(name: str, revision: str) -> str | None:
-    """Returns the recorded content of `name`, or None when it cannot be read.
-
-    The revision is normalised before joining: the index is spelled ":name",
-    so appending another colon produced "::name", which git rejects. The
-    rejected spec used to send the caller down the working-tree fallback.
-    """
     prefix = revision[:-1] if revision.endswith(":") else revision
     result = subprocess.run(["git", "show", f"{prefix}:{name}"],
                             capture_output=True, text=True, check=False, encoding="utf-8",
@@ -71,13 +53,6 @@ def is_exempt(name: str) -> bool:
 
 
 def scan(paths: list[str], revision: str) -> tuple[list[tuple[str, int, str, str]], list[str]]:
-    """Scans recorded content and reports anything unreadable as a separate list.
-
-    An unreadable entry used to fall through to the working tree, so a staged
-    blob git would not give up was quietly replaced by text that was never
-    committed. The guard passed on what it could not see. Unreadable is now a
-    refusal the caller must honour, never a substitution.
-    """
     findings: list[tuple[str, int, str, str]] = []
     unreadable: list[str] = []
     for name in paths:
@@ -116,13 +91,6 @@ def identity_findings() -> list[str]:
 
 
 def redact_sample(sample: str) -> str:
-    """Removes anything that could be a usable credential from what gets printed.
-
-    A guard that echoes the secret it found has turned a blocked commit into a
-    leaked one: the value now sits in the terminal, in CI logs, and in the
-    build output of whoever tried to commit it. The location is enough to find
-    the value, so only the kind of finding is reported.
-    """
     visible = len(sample) - len(sample.lstrip("*_"))
     masked = "*" * min(visible, 4)
     return f"{masked} ({len(sample)} caracteres)"

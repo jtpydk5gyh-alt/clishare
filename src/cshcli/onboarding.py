@@ -1,32 +1,14 @@
-"""The first run, and a place to keep a key that is not in the environment.
-
-Two problems, and they are the reason a new person gives up before the tool
-does anything.
-
-The first is that reaching something useful takes four commands and an
-environment variable. That is not documentation's fault; it is a shape
-problem. `start` walks the missing pieces in order and stops when there is
-nothing left to ask.
-
-The second is where the key lives. `$env:OPENAI_API_KEY` is the obvious answer
-and the wrong one: it lands in the shell history, and it is inherited by every
-child process the agent spawns. `Keyring` keeps it in a file only this user can
-read, under the same `.cshcli` folder the database already uses. The
-environment variable still wins when it is set, because someone who exported it
-knows what they are doing.
-
-Nothing here ever prints a key. `describe` reports whether one exists, how old
-it is, and which variable would carry it otherwise — never the value.
-"""
-
 from __future__ import annotations
 
+import getpass
 import json
 import os
 import stat
+import sys
 import time
 from pathlib import Path
 
+from . import __version__
 from .errors import DomainError
 
 
@@ -84,11 +66,6 @@ class Keyring:
         return True
 
     def resolve(self, provider: str) -> tuple[str | None, str]:
-        """Returns the secret and where it came from, in that order.
-
-        The environment wins over the file, always. A key exported on purpose
-        should not be silently replaced by a stale one on disk.
-        """
         variable = PROVIDER_VARIABLES.get(provider)
         if variable:
             from_environment = os.environ.get(variable)
@@ -100,7 +77,6 @@ class Keyring:
         return None, "missing"
 
     def describe(self, provider: str) -> dict:
-        """Says whether a key exists and where. Never says what it is."""
         secret, source = self.resolve(provider)
         stored_at = None
         record = self._read().get(provider)
@@ -116,9 +92,131 @@ class Keyring:
                 "detail": "The value is never printed, here or anywhere else."}
 
 
+MENU = (
+    "  1) Sesión           Trabaja por tu cuenta\n"
+    "  2) Unirme o crear   Un proyecto compartido con otra persona\n"
+)
+
+
+def _ask(prompt, reader, out):
+    while True:
+        try:
+            answer = reader(prompt)
+        except EOFError:
+            raise DomainError(400, "input_required",
+                              "cshcli start necesita una terminal interactiva.") from None
+        answer = (answer or "").strip()
+        if answer:
+            return answer
+        out("  No puede estar vacío.")
+
+
+def _ask_default(prompt, default, reader):
+    try:
+        answer = reader(prompt)
+    except EOFError:
+        raise DomainError(400, "input_required",
+                          "cshcli start necesita una terminal interactiva.") from None
+    return (answer or "").strip() or default
+
+
+def _pick(prompt, options, reader, out):
+    while True:
+        answer = _ask(prompt, reader, out)
+        if answer in options:
+            return answer
+        out("  Opciones: " + ", ".join(sorted(options)) + ".")
+
+
+def _confirm(prompt, reader, out):
+    while True:
+        answer = _ask(prompt, reader, out).lower()
+        if answer in {"s", "si", "sí", "y", "yes"}:
+            return True
+        if answer in {"n", "no"}:
+            return False
+        out("  Responde s o n.")
+
+
+def _remember(session, project):
+    session.remember(project=project["id"], project_name=project["name"])
+
+
+def _known_project(client, project_id):
+    for project in client.request("GET", "/v1/projects"):
+        if project["id"] == project_id:
+            return project
+    return {"id": project_id, "name": project_id}
+
+
+def _new_project(client, reader, out):
+    name = _ask_default("  ¿Cómo se llama tu proyecto? [demo] ", "demo", reader)
+    project = client.request("POST", "/v1/projects", {"name": name})
+    out(f"  Proyecto '{project['name']}' creado.")
+    return project
+
+
+def _shared(client, session, reader, secret, out):
+    if not _confirm("  ¿Tienes un código de invitación? [s/n] ", reader, out):
+        project = _new_project(client, reader, out)
+        invite = client.request("POST", f"/v1/projects/{project['id']}/invites",
+                                {"role": "member", "ttl": 604800})
+        _remember(session, project)
+        out("\n  Para invitar a alguien, dale este código:\n")
+        out(f"    {invite['token']}\n")
+        return project
+    code = secret("  Pega el código: ")
+    accepted = client.request("POST", "/v1/invites/accept", {"token": code})
+    project = _known_project(client, accepted["project_id"])
+    _remember(session, project)
+    out(f"\n  Te uniste a '{project['name']}' como {accepted['role']}.")
+    return project
+
+
+def _provider_key(keyring, reader, secret, out):
+    for name in sorted(PROVIDER_VARIABLES):
+        if keyring.resolve(name)[0]:
+            out(f"  Ya tienes una clave de {name}.")
+            return
+    provider = _pick(f"  ¿Qué proveedor usas? ({'/'.join(sorted(PROVIDER_VARIABLES))}) ",
+                     set(PROVIDER_VARIABLES), reader, out)
+    while True:
+        value = secret(f"  Clave de {provider} (no se muestra): ")
+        if (value or "").strip():
+            keyring.set(provider, value)
+            out(f"  Clave guardada en {keyring.path}")
+            return
+        out("  La clave llegó vacía; inténtalo otra vez.")
+
+
+def run_wizard(client, session, keyring, reader=None, secret=None, out=None):
+    reader = reader or input
+    out = out or print
+    secret = secret or (lambda prompt: getpass.getpass(prompt, stream=sys.stderr))
+    if session.ready():
+        out(f"\n  Ya estás listo: {session.name} en '{session.project_name}'.")
+        out("  Escribe 'cshcli' para empezar.\n")
+        return 0
+    out(f"\n  CSHCLI {__version__} — coordinas agentes con tus propias cuentas\n")
+    out(MENU)
+    route = _pick("\n  Elige 1 o 2: ", {"1", "2"}, reader, out)
+    name = session.name or _ask("  ¿Cómo te llamas? ", reader, out)
+    identity = client.request("POST", "/v1/users", {"name": name})
+    client.token = identity["token"]
+    session.remember(name=name, token=identity["token"])
+    out(f"\n  Hola, {name}.")
+    if route == "1":
+        _remember(session, _new_project(client, reader, out))
+    else:
+        _shared(client, session, reader, secret, out)
+    _provider_key(keyring, reader, secret, out)
+    out(f"\n  Listo. Escribe 'cshcli' para hablar con tu agente en "
+        f"'{session.project_name}'.\n")
+    return 0
+
+
 def next_step(store_ready: bool, identity: bool, project: bool,
               provider: str | None, provider_ready: bool) -> dict:
-    """The one question worth asking, and the honest order of them."""
     if not store_ready:
         return {"step": "serve", "question": None,
                 "detail": "The coordinator is not running.",

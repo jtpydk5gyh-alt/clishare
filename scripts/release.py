@@ -1,32 +1,3 @@
-"""Builds a release and refuses to call it one until it proves itself.
-
-The plan asks for a versioned release with checksums, change notes and real
-limits, and it asks that the install be re-validated on every supported
-Python. Two of those are cheap and one is not, so this script does the cheap
-ones and says plainly which one it did not do.
-
-What it does:
-
-- reads the version from `src/cshcli/__init__.py` and refuses to build when
-  `pyproject.toml` disagrees, because two versions in one repository is a
-  release nobody can reason about;
-- builds the wheel and the source distribution with the standard library only,
-  into a directory it creates;
-- writes a `SHA256SUMS` file next to them;
-- installs the wheel into a throwaway directory, imports it, and runs the CLI's
-  `--help` from the **installed** copy, not from the working tree;
-- refuses to run when the tree is dirty, because a release built from uncommitted
-  work is a release nobody can reproduce.
-
-What it does not do: sign anything, publish anywhere, or verify the install on
-Linux, macOS or Python versions other than the one running it. Those need a
-machine and credentials that do not exist here, and a release procedure that
-claims otherwise is worse than one that admits it.
-
-The build is refused rather than warned about when the working tree is dirty.
-A warning is the kind of thing that gets read once and then ignored.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -107,7 +78,6 @@ def checksums(artefacts: list[Path]) -> Path:
 
 
 def verify_install(wheel: Path, version: str, into: Path) -> dict:
-    """Imports and runs the installed copy, not the working tree."""
     if into.exists():
         shutil.rmtree(into)
     into.mkdir(parents=True)
