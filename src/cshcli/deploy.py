@@ -357,13 +357,6 @@ class DeployWorker:
         return settled
 
     def _ask_health(self, digest, deployment_id, lease, external_id=None):
-        """Asks the destination whether it is healthy, or reconciles instead.
-
-        A timeout during the health check is as ambiguous as one during the
-        change: the environment may well have served the artefact and lost the
-        answer on the way back. Treating it as a plain failure would let the
-        next attempt overwrite a deployment that actually landed.
-        """
         try:
             return self.destination.health(digest)
         except DestinationTimeout as timeout:

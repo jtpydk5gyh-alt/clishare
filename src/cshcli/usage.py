@@ -1,26 +1,3 @@
-"""Recording what a run cost, and refusing to invent what it did not.
-
-The plan's rule for this milestone is short and load-bearing: use `decimal`
-for amounts, record currency, date and unit, and **unknown values stay null and
-are never turned into zero**. A budget that quietly treats an unpriced token as
-free is worse than no budget, because it reports safety it does not have.
-
-So `Usage.record` refuses a numeric cost without a currency, a numeric cost
-without the date the price was read, and it stores `None` for anything it was
-not told. `Policy.set_budget` stores the amount as a decimal string rather than
-a float, because money in binary floating point is a rounding bug waiting for
-an invoice.
-
-Nothing here estimates. `Policy.authorize_run` accepts a caller-supplied
-estimate and compares it against the budget; it never produces one, because an
-estimate this code invented would be an estimate the policy would then trust as
-though a person had checked it.
-
-The correlation fields exist so an operator can follow one decision without
-reading a prompt: request id, project, task, agent, lease and fence. No prompt,
-no key and no token belongs in any of them.
-"""
-
 from __future__ import annotations
 
 import decimal
@@ -108,14 +85,6 @@ def _load_record(row) -> dict:
 
 
 def _costed(store, project_id: str, user_id: str | None, currency: str | None) -> list[dict]:
-    """Every record for a member, including the ones whose currency is unknown.
-
-    Filtering on the currency in SQL would make an unpriced call invisible: it
-    has no currency, so it drops out of the total and the budget looks cheaper
-    than reality. An unknown cost has to stay visible in order to be counted as
-    unknown. A record in a *different* currency is genuinely unrelated and is
-    left out.
-    """
     query = "SELECT * FROM usage_records WHERE project_id = ?"
     arguments: list = [project_id]
     if user_id is not None:
@@ -148,7 +117,6 @@ class Usage:
                price_as_of: str | None = None, unit: str | None = None,
                request_id: str | None = None, lease_id: str | None = None,
                fence: int | None = None) -> dict:
-        """Records one call. Anything not told stays None, never zero."""
         with self.store._connection() as connection:
             self.store._authorize(connection, user_id, project_id)
         provider = _text(provider, "provider", 120)
@@ -202,7 +170,6 @@ class Usage:
 
     def total(self, project_id: str, user_id: str | None = None,
               currency: str = "EUR") -> dict:
-        """Sums what is known. Reports what is unknown instead of guessing."""
         money = _currency(currency)
         records = self._costed(project_id, user_id, money)
         total = Decimal("0")
@@ -277,12 +244,6 @@ class BudgetPolicy:
 
     def authorize_run(self, user_id: str, project_id: str, *,
                       estimated_cost: str | None = None, currency: str = "EUR") -> dict:
-        """Decides whether a run may start. Never invents an estimate.
-
-        Without a budget, a run is authorised: the owner may not have set one.
-        With a budget and no estimate, the run is refused, because a budget
-        that cannot see the cost of what it is authorising is decoration.
-        """
         money = _currency(currency)
         with self.store._connection() as connection:
             self.store._authorize(connection, user_id, project_id)

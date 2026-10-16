@@ -1,6 +1,6 @@
 # Coordination HTTP protocol, version 1
 
-Date: 14 October 2026. This version describes the local pilot. The server
+Date: 15 October 2026. This version describes the local pilot. The server
 prints the base URL; it will normally be `http://127.0.0.1:8765`. The service
 only accepts loopback and must not be published through a tunnel, reverse
 proxy, or public bind. HTTPS and verified accounts belong to a later phase.
@@ -243,9 +243,71 @@ if they know its identifier and fence. Using a lease from another project
 returns `404`.
 
 Fences increase persistently with new acquisitions and survive restarts.
-The client does not compute them. An integration that wants to block stale
-writers must verify the fence at the moment of applying the change; the v1
-service does not apply patches or run deploys.
+The client does not compute them. The integration queue protects the branch
+update with a compare-and-swap against the SHA observed before checks. The
+service still does not run arbitrary agent commands or publish cloud
+deployments.
+
+## Local Git integration queue
+
+The queue is local-only. A `writer` or `owner` can submit and process entries;
+a `viewer` can list and read them. Only the `owner` may name a repository or
+branch in a request; a non-owner doing so receives
+`403 repository_override_forbidden`. The repository otherwise comes from
+`CSHCLI_REPOSITORY`. A request without a configured repository fails with
+`409 repository_not_configured` instead of guessing a directory.
+
+Before starting the coordinator, the operator must configure the check command
+as a JSON array. It is executed without a shell in the dedicated integration
+worktree, with a 240-second timeout:
+
+```powershell
+$env:CSHCLI_INTEGRATION_CHECK = '["python","-m","unittest","discover","-s","tests"]'
+```
+
+Processing a non-empty queue without this setting fails with
+`409 checks_not_configured` and leaves the branch untouched. An invalid JSON
+array fails with `500 integration_check_invalid`.
+
+### `POST /v1/projects/{project_id}/queue`
+
+Body:
+
+```json
+{
+  "commit_sha":"40-hex-commit",
+  "base_sha":"40-hex-base",
+  "task_id":"optional-task-id",
+  "repository":"optional-local-path"
+}
+```
+
+Response `201` with the queue entry. Repeating the same commit in the same
+project returns the original entry. A missing commit returns
+`404 commit_not_found`.
+
+### `GET /v1/projects/{project_id}/queue`
+
+Response `200` with `{"data":{"entries":[...]}}`. Reading the queue does not
+require repository or check configuration.
+
+### `GET /v1/projects/{project_id}/queue/{entry_id}`
+
+Response `200` with that project's entry. An identifier belonging to another
+project is returned as `404 queue_not_found`.
+
+**Known gap.** A queue entry does not currently require a prior accepted-patch
+record. `IntegrationGate.accept_patch` validates authorisation generation,
+lease fences and resources, and the queue does not yet insist that its commit
+passed through it. Do not treat queue processing as the publication authority.
+
+### `POST /v1/projects/{project_id}/queue/next`
+
+The owner may provide `repository` and `branch`; otherwise the configured
+repository and the `integration` branch are used. An empty queue returns
+`{"data":{"state":"idle"}}`. A successful composition returns state
+`merged`; a conflict returns `review`; a failing check returns `failed`.
+The branch advances only when its observed SHA still matches after checks.
 
 ## Events
 
@@ -269,8 +331,8 @@ a subscription from a cursor.
 | `400` | Invalid JSON, field, type, resource, TTL, fence, duplicate `Content-Length`, or unsupported `Transfer-Encoding` | Fix the request; do not retry the same one |
 | `401` | Missing, invalid, or unknown bearer identity | Select a valid local credential |
 | `403` | Not a member, insufficient role, foreign lease, rejected Origin/Host | Change permissions or destination explicitly |
-| `404` | Missing route, project, invitation, or lease | Re-read identifiers; do not create implicit substitutes |
-| `409` | CAS, busy resource, fence, expiration, or consumed invitation | Re-read state and replan |
+| `404` | Missing route, project, invitation, lease, commit, or queue entry | Re-read identifiers; do not create implicit substitutes |
+| `409` | CAS, busy resource, fence, expiration, consumed invitation, or missing repository/check configuration | Re-read state and replan |
 | `413` | Body over 1 MiB | Reduce the body before resending |
 | `415` | Body with a `Content-Type` other than `application/json` | Send JSON with the correct header |
 | `500` | Unexpected internal failure | Preserve context, check the coordinator, and re-read before repeating mutations |
@@ -296,9 +358,10 @@ backwards compatible; removing fields, changing resource semantics, or
 modifying roles requires versioning and migration. Clients must ignore
 extra fields and treat identifiers as opaque.
 
-v1 guarantees transactional coordination decisions for a local coordinator.
-**It does not guarantee exclusion of external writers, agent isolation,
-Git integration, or real serialised deployments.** Those guarantees have
+v1 guarantees transactional coordination decisions and local Git queue
+integration for a local coordinator. **It does not guarantee exclusion of
+external writers, agent process isolation, multi-host Git integration, or real
+serialised cloud deployments.** Those guarantees have
 their own acceptance criteria in the
 [design](superpowers/specs/2026-10-14-cshcli-design.md) and the
 [plan](superpowers/plans/2026-10-14-cshcli.md).

@@ -1,32 +1,3 @@
-"""Native login, behind a gate that is closed until someone reviews it.
-
-The plan is explicit about this milestone: if a provider does not meet the
-activation criteria, `capabilities` reports `native_login: false` and the
-official adapter is kept. It is also explicit that a private repository does
-not by itself satisfy the requirements, that Anthropic stays on an API key or
-its official binary while no other modality is documented, and that Claude.ai
-tokens are never read or exported.
-
-So this module ships with an **empty review registry**. That is not an
-oversight to be filled in later by whoever runs it; it is the finding. Enabling
-native login for a provider requires recording a review of that provider's own
-published documentation, naming the registered client, the scopes, the
-modality and the restrictions, with the date of the review. Nobody has done
-that review here, so nothing is eligible.
-
-The machinery underneath the gate is real and tested, because it will be needed
-the moment a review happens, and because an untested gate is just a comment.
-`begin` and `finish` implement one-use random state, PKCE, exact redirect
-matching, an expiry, and a local store. What they will not do is run for a
-provider with no review record.
-
-The exchange happens on the user's machine and the token never reaches the
-coordinator. `finish` takes a transport so a test can assert nothing was sent
-anywhere, and the CSHCLI identity stays separate from the provider account:
-what is recorded is an account name, a billing modality and a data
-destination, shown before the account is ever used.
-"""
-
 from __future__ import annotations
 
 import base64
@@ -52,14 +23,6 @@ REVIEWED: dict[str, dict] = {}
 
 
 class SecureStore:
-    """A local file holding provider secrets, readable only by this user.
-
-    It is not a hardware store and does not pretend to be one. It exists so
-    that a secret is never written into the coordinator, the repository or the
-    environment, and it fails loudly rather than silently widening its
-    permissions.
-    """
-
     def __init__(self, path: Path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)

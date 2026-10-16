@@ -1,5 +1,7 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
+import subprocess
 import time
 from pathlib import Path
 from threading import Lock
@@ -10,6 +12,7 @@ from .context import ContextAssembler
 from .errors import DomainError
 from .integration import IntegrationGate
 from .policy import Policy
+from .queue import IntegrationQueue
 from .store import SCHEMA_VERSION, Store
 
 MAX_BODY = 1024 * 1024
@@ -222,6 +225,29 @@ class Handler(BaseHTTPRequestHandler):
                     _integer(body, "authorization_generation"),
                     required(body, "lease_fences"), _text(body, "base_sha"),
                     _text(body, "commit_sha"), body.get("resources"), body.get("repo"))
+            if resource == "queue" and len(path) in {4, 5}:
+                entry = path[4] if len(path) == 5 else None
+                with store._connection() as connection:
+                    role = store._authorize(connection, user, project,
+                                            write=method == "POST")
+                if entry == "next" and method == "POST":
+                    repository = _optional_text(body, "repository")
+                    branch = _optional_text(body, "branch")
+                    _authorize_git_override(role, repository, branch)
+                    queue = _queue(store, repository, branch, load_checks=True)
+                    return 200, queue.process_next(project)
+                if entry is None and method == "POST":
+                    repository = _optional_text(body, "repository")
+                    _authorize_git_override(role, repository)
+                    queue = _queue(store, repository)
+                    return 201, queue.submit(
+                        project, _text(body, "commit_sha"),
+                        _text(body, "base_sha"), body.get("task_id"))
+                queue = _queue(store)
+                if entry is None and method == "GET":
+                    return 200, {"entries": queue.list(project)}
+                if entry is not None and method == "GET":
+                    return 200, queue.get(project, entry)
             if resource == "leases" and len(path) in {5, 6}:
                 lease_id = path[4]
                 if len(path) == 6 and path[5] == "validate" and method == "POST":
@@ -233,6 +259,46 @@ class Handler(BaseHTTPRequestHandler):
                 if len(path) == 5 and method == "DELETE":
                     return 200, store.release_lease(user, project, lease_id, required(body, "fence"))
         raise DomainError(404, "route_not_found", "Ruta o método no disponible.")
+
+
+def _authorize_git_override(role: str, repository: str | None,
+                            branch: str | None = None) -> None:
+    if role != "owner" and (repository is not None or branch is not None):
+        raise DomainError(403, "repository_override_forbidden",
+                          "Only the project owner can override Git configuration.")
+
+
+def _queue(store, repository: str | None = None, branch: str | None = None,
+           load_checks: bool = False):
+    root = repository or os.environ.get("CSHCLI_REPOSITORY")
+    checks = _integration_checks() if load_checks else None
+    return IntegrationQueue(store, Path(root) if root else None, branch or "integration",
+                            checks=checks)
+
+
+def _integration_checks():
+    encoded = os.environ.get("CSHCLI_INTEGRATION_CHECK")
+    if not encoded:
+        return None
+    try:
+        command = json.loads(encoded)
+    except json.JSONDecodeError:
+        raise DomainError(500, "integration_check_invalid",
+                          "CSHCLI_INTEGRATION_CHECK must be a JSON command array.") from None
+    if (not isinstance(command, list) or not command
+            or any(not isinstance(part, str) or not part for part in command)):
+        raise DomainError(500, "integration_check_invalid",
+                          "CSHCLI_INTEGRATION_CHECK must be a non-empty JSON command array.")
+
+    def checks(path):
+        try:
+            result = subprocess.run(command, cwd=path, capture_output=True,
+                                    timeout=240, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return result.returncode == 0
+
+    return checks
 
 
 def required(body, key):
@@ -252,6 +318,15 @@ def _integer(body, key):
     value = required(body, key)
     if type(value) is not int:
         raise DomainError(400, "invalid_field", f"{key} debe ser un entero.")
+    return value
+
+
+def _optional_text(body, key):
+    value = body.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise DomainError(400, "invalid_field", f"{key} debe ser texto no vacío.")
     return value
 
 

@@ -4,10 +4,11 @@ AI CLI with personal credentials and shared project coordination. The idea: you
 create a project, invite other people, and everyone works with their own agents
 and AI accounts while sharing decisions and reserving files.
 
-**Status: local 0.3.0 pilot.** The CLI, local HTTP coordinator, SQLite, projects,
-invitations, versioned memory, leases, and text-based AI adapters are already in
-place. The remote multi-user service, the runner that controls writes, automatic
-worktrees, the integration queue, and real deployments are still in the plan.
+**Status: local 0.4.0 pilot.** The CLI, local HTTP coordinator, SQLite, projects,
+invitations, versioned memory, leases, text-based AI adapters, mediated runner,
+automatic worktrees, task DAG, local integration queue, deployment coordination,
+usage and budgets are in place. The remote multi-user service and a real cloud
+destination are blocked on external infrastructure.
 
 The [full plan](superpowers/plans/2026-10-14-cshcli.md), the
 [design](superpowers/specs/2026-10-14-cshcli-design.md), and the
@@ -16,25 +17,55 @@ invariants, risks, and acceptance criteria.
 
 ## Run from source
 
-Requirement: Python 3.11 or later. The pilot needs no runtime dependencies. From
-the repository root:
+Requirement: Python 3.11 or later. The pilot needs no runtime dependencies.
 
 ```powershell
-python scripts/cshcli.py --help
-python scripts/cshcli.py serve
+python scripts/cshcli.py start
 ```
 
-The coordinator listens on `http://127.0.0.1:8765` and stores its database in
-`.cshcli/coordinator.sqlite3`. That folder is ignored by Git. The server in
-this cut only accepts loopback; the remote service phase covers HTTPS, verified
-identity, request limits, and member administration.
+`start` is the only command a new user needs. It asks two questions and does the
+rest:
+
+```text
+  CSHCLI 0.4.0 — coordinas agentes con tus propias cuentas
+
+  1) Sesión           Trabaja por tu cuenta
+  2) Unirme o crear   Un proyecto compartido con otra persona
+
+  Elige 1 o 2:
+```
+
+Choosing **1** asks your name, names a project and stores a provider key.
+Choosing **2** asks whether you have an invitation code; with one you join,
+without one you create a project and receive a code to hand to someone else.
+
+Nothing needs to be running first. When no coordinator is reachable, each
+command starts one inside its own process on an ephemeral port and closes it on
+exit. Your name, current project and token are kept in
+`.cshcli/session.json`, so later commands work with no `--url`, no
+`CSHCLI_TOKEN` and no server:
+
+```powershell
+python scripts/cshcli.py project list
+```
+
+The database lives in `.cshcli/coordinator.sqlite3` and holds every decision, so
+the coordinator that made them does not need to keep running. That folder is
+ignored by Git. The pilot coordinator only accepts loopback; the remote service
+phase covers HTTPS, verified identity, request limits, and member
+administration.
+
+`cshcli serve` still starts a long-lived coordinator others can reach. If one is
+already listening on `127.0.0.1:8765`, the CLI uses it. `--url` or `CSHCLI_URL`
+forces a specific coordinator, and that is the only supported path to a shared
+one.
 
 To install the command in a virtual environment:
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\python -m pip install -e .
-.venv\Scripts\cshcli --help
+.venv\Scripts\cshcli start
 ```
 
 On Linux/macOS: `.venv/bin/python -m pip install -e .` and `.venv/bin/cshcli`.
@@ -42,7 +73,12 @@ Packaging uses setuptools; the first install command may download it.
 
 ## Create a project and invite someone
 
-Keep the server running in the first terminal. In a second PowerShell:
+Run `cshcli start`, choose **2**, decline the invitation question and name a
+project. It prints an invitation code. The other person runs `cshcli start`,
+chooses **2**, answers that they have a code and pastes it.
+
+The commands below still exist for scripts and need `CSHCLI_TOKEN` when there is
+no local session:
 
 ```powershell
 $identity = python scripts/cshcli.py auth register ana | ConvertFrom-Json
@@ -114,10 +150,10 @@ Default TTL: 120 seconds; range: 1–3600. Renewal is manual in this cut. Fences
 are monotonic and persistent: a former holder cannot renew or release an
 expired or reassigned lease with a stale value.
 
-**Current limit:** a lease is an agreement verified by the coordinator. It does
-not yet intercept writes from external tools, nor does it link the chat with
-an editor agent. The runner and patch validation in the next milestone will
-enforce those leases on code changes.
+**Current limit:** the mediated runner validates leases before its own file
+writes and stops after heartbeat loss, but it does not intercept writes from
+external tools. It exposes no arbitrary command execution and is not a process
+sandbox.
 
 ## AI accounts and API keys
 
@@ -178,6 +214,40 @@ automatically. Do not put secrets in prompts, memory, events, or versioned
 files. Provider errors omit remote bodies and stderr to avoid leaking
 credentials.
 
+## Integrate queued Git commits
+
+Before starting the coordinator, point it at the repository and configure the
+check command as a JSON array. The command runs without a shell in a dedicated
+integration worktree, with a 240-second timeout:
+
+```powershell
+$env:CSHCLI_REPOSITORY = (Get-Location).Path
+$env:CSHCLI_INTEGRATION_CHECK = '["python","-m","unittest","discover","-s","tests"]'
+```
+
+Processing a queue entry is an explicit `cshcli` call, so no long-lived
+coordinator is required for this either.
+
+The HTTP API can submit, list, read and process queue entries:
+
+- `POST /v1/projects/{project_id}/queue`
+- `GET /v1/projects/{project_id}/queue`
+- `GET /v1/projects/{project_id}/queue/{entry_id}`
+- `POST /v1/projects/{project_id}/queue/next`
+
+Submitting and processing require a `writer` or `owner`; reading requires any
+project membership. Only the `owner` can name a different `repository` or
+`branch` in a request, so a member cannot point the integrator at another path
+on the machine. Processing a non-empty queue without `CSHCLI_INTEGRATION_CHECK`
+returns `409 checks_not_configured` and leaves the branch untouched. A conflict or branch movement goes to review. A failing check
+leaves the item failed. None of those paths is a silent merge.
+
+This is still local Git integration, not a multi-host worker. Only the owner may
+name a repository path per request, because the coordinator is loopback-only;
+a non-owner cannot. Do not publish this pilot through a tunnel or reverse proxy.
+A queue entry can currently be merged without a prior accepted-patch record;
+the acceptance gate is not yet required by the queue.
+
 ## Coordinate deployments
 
 ```powershell
@@ -186,9 +256,11 @@ python scripts/cshcli.py deploy reserve $projectId staging --agent ana-release -
 
 Only the owner can reserve `deploy:staging`; a second attempt on the same
 environment fails while the lease is still active. Renew and release it with
-`lease`. **This command reserves the environment; it does not deploy.** The
-plan covers a persistent queue, exact SHA and digest, idempotency, checks,
-publishing, health checks, reconciliation after failures, and rollback.
+`lease`. **This command only reserves the environment.** The deployment core
+has a persistent queue, exact SHA and digest, idempotency, recorded checks,
+health checks, reconciliation and rollback, tested against a separate process
+and a real local health socket. No cloud destination is configured and nothing
+has been published.
 
 ## Verification
 
@@ -199,23 +271,24 @@ python -m compileall -q src tests scripts
 python scripts/cshcli.py --help
 ```
 
-The tests use real SQLite, local HTTP, and provider fixtures. The synchronised
+The current Windows run passes 537 tests with 5 explicit skips for unavailable
+POSIX symbolic-link/file-permission guarantees and real PostgreSQL. The tests
+use real SQLite, local HTTP, Git, and provider fixtures. The synchronised
 races pit eleven agents from two people against the same resource, memory
 version, and invitation. They check permissions, expiration, persistent
 fencing, paths, atomic batches, and the absence of secrets in audit logs.
 Provider tests do not make paid calls or verify real logins.
 
-The [GitHub Actions template](templates/ci.yml.example) will run the suite on
-Windows and Linux with Python 3.11, 3.12, and 3.13 once it is activated as
-`.github/workflows/ci.yml`. The credential used for the first push cannot
-publish workflows; CI remains pending activation with the required permission.
+The active GitHub Actions workflow runs the suite on Windows and Linux with
+Python 3.11, 3.12, and 3.13. The required `Personal data guard` check also runs
+against the commit being merged.
 
 ## Next deliveries
 
-1. Remote service with HTTPS, verified accounts, token rotation, and member revocation.
-2. Per-task runner with worktrees, heartbeat, mediated tools, and path/symlink control.
-3. Tasks and quotas per person/provider, evidence-backed memory, and integration queue over SHA.
-4. Per-environment deployment pipeline with verifiable artefacts and rollback.
-5. Eligible native OAuth, streaming, cost metrics, packaging, and distribution.
+1. Remote service with real HTTPS and PostgreSQL, after concurrency and restore drills pass.
+2. A conversational `cshcli` loop, so a ready session drops straight into chat instead of naming the next command.
+3. A signed and published release whose wheel and `SHA256SUMS` URLs are exercised end to end.
+4. Windows protection for the local key store beyond ordinary file placement.
+5. Native provider OAuth only after an explicit provider-by-provider eligibility review.
 
 The plan develops each delivery with contracts, tests, and closure conditions.

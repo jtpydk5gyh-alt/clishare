@@ -19,7 +19,7 @@ and AI accounts while sharing decisions and reserving files.
 | Revocable authorisation | A generation counter per member and per agent; revoking one invalidates the runs already open |
 | Mediated runner | Every write validates its lease against the coordinator at the moment it happens, stops on heartbeat loss, and has no method that runs a command |
 | Task DAG | Seven states, dependency cycles refused on create and on modify, and claiming a task takes its leases in the same transaction that marks it running |
-| Integration queue | One integration per project, a dedicated worktree the user's tree is never part of, the base recomputed for the second patch, checks on the composed result, and the branch advanced only if it had not moved |
+| Integration queue | One integration per project, a dedicated worktree the user's tree is never part of, the base recomputed for the second patch, configured checks on the composed result, and the branch advanced only if it had not moved. Local HTTP routes submit, list, read and process entries; processing fails closed without `CSHCLI_INTEGRATION_CHECK` |
 | Deploy coordination | Idempotent enqueue, approval bound to the artefact digest, `reconciling` when a timeout is ambiguous, and a rollback refused if the environment moved. Tested against a real process and a real health socket |
 | AI providers | OpenAI, Anthropic, Google, **MiniMax**, plus the official Codex, Claude Code and Gemini CLIs, with a capability probe that never invents pricing |
 | Native login | Built and closed. PKCE, one-use state and a local store are in place, but **no provider is eligible**: the eligibility review the plan requires has not been done. See [providers](docs/PROVIDERS.md) |
@@ -27,7 +27,7 @@ and AI accounts while sharing decisions and reserving files.
 
 ## Status
 
-**Local pilot, version 0.3.0.** The coordinator, the CLI, the coordination
+**Local pilot, version 0.4.0.** The coordinator, the CLI, the coordination
 store and the publication gate are implemented and covered by tests that run on
 Linux and Windows with Python 3.11, 3.12 and 3.13.
 
@@ -63,18 +63,42 @@ requirements, phases, permissions, invariants, risks, and acceptance criteria.
 
 ## Run from source
 
-Requirement: Python 3.11 or later. The pilot needs no runtime dependencies. From
-the repository root:
+Requirement: Python 3.11 or later. The pilot needs no runtime dependencies, and
+no server to start first:
 
 ```powershell
-python scripts/cshcli.py --help
-python scripts/cshcli.py serve
+python scripts/cshcli.py start
 ```
 
-The coordinator listens on `http://127.0.0.1:8765` and stores its database in
-`.cshcli/coordinator.sqlite3`. That folder is ignored by Git. The server in
-this cut only accepts loopback; the remote service phase covers HTTPS, verified
-identity, request limits, and member administration.
+```text
+  CSHCLI 0.4.0 — coordinas agentes con tus propias cuentas
+
+  1) Sesión           Trabaja por tu cuenta
+  2) Unirme o crear   Un proyecto compartido con otra persona
+
+  Elige 1 o 2:
+```
+
+**1** asks your name, names a project and stores a provider key. **2** asks
+whether you have an invitation code: with one you join someone else's project,
+without one you create yours and get a code to share.
+
+When no coordinator is reachable, every command starts one inside its own
+process and closes it on exit. Your name, current project and token are kept in
+`.cshcli/session.json`, so later commands need no `--url` and no token:
+
+```powershell
+python scripts/cshcli.py project list
+```
+
+Every decision lives in `.cshcli/coordinator.sqlite3`, so the coordinator that
+made it does not need to keep running. That folder is ignored by Git. The pilot
+coordinator only accepts loopback; the remote service phase covers HTTPS,
+verified identity, request limits, and member administration.
+
+`cshcli serve` still starts a long-lived coordinator others can reach, and a
+coordinator already on `127.0.0.1:8765` is used automatically. `--url` or
+`CSHCLI_URL` selects a specific one.
 
 To install the command in a virtual environment:
 
@@ -190,10 +214,27 @@ Default TTL: 120 seconds; range: 1–3600. Renewal is manual in this cut. Fences
 are monotonic and persistent: a former holder cannot renew or release an
 expired or reassigned lease with a stale value.
 
-**Current limit:** a lease is an agreement verified by the coordinator. It does
-not yet intercept writes from external tools, nor does it link the chat with
-an editor agent. The runner and patch validation in the next milestone will
-enforce those leases on code changes.
+**Current limit:** the mediated `Runner` validates leases before its own file
+writes and stops after heartbeat loss, but it does not intercept writes from
+external tools. It exposes no arbitrary command execution and is not a process
+sandbox.
+
+## Local integration queue
+
+Set the repository and a check command before processing a queue entry:
+
+```powershell
+$env:CSHCLI_REPOSITORY = (Get-Location).Path
+$env:CSHCLI_INTEGRATION_CHECK = '["python","-m","unittest","discover","-s","tests"]'
+```
+
+The local HTTP API can submit, list, read and process queue entries. Processing
+runs the configured JSON command array without a shell in a dedicated worktree,
+with a 240-second timeout, and refuses with `409 checks_not_configured` when no
+command is configured. Only the project owner can name a repository or branch in
+a request. A queue entry can currently be merged without a prior accepted-patch
+record; that gate is not yet required by the queue.
+See the exact routes and payloads in [the protocol](docs/PROTOCOL.md).
 
 ## AI accounts and API keys
 
@@ -263,9 +304,11 @@ python scripts/cshcli.py deploy reserve $projectId staging --agent ana-release -
 
 Only the owner can reserve `deploy:staging`; a second attempt on the same
 environment fails while the lease is still active. Renew and release it with
-`lease`. **This command reserves the environment; it does not deploy.** The
-plan covers a persistent queue, exact SHA and digest, idempotency, checks,
-publishing, health checks, reconciliation after failures, and rollback.
+`lease`. **This command only reserves the environment.** The deployment core
+has a persistent queue, exact SHA and digest, idempotency, recorded checks,
+health checks, reconciliation and rollback, tested against a separate process
+and a real local health socket. No cloud destination is configured and nothing
+has been published.
 
 ## Verification
 
@@ -277,7 +320,9 @@ python scripts/cshcli.py --help
 python scripts/guard_secrets.py --all
 ```
 
-The tests use real SQLite, local HTTP, and provider fixtures. The synchronised
+The current Windows run passes 537 tests with 5 explicit skips for unavailable
+POSIX symbolic-link/file-permission guarantees and real PostgreSQL. The tests
+use real SQLite, local HTTP, Git, and provider fixtures. The synchronised
 races pit eleven agents from two people against the same resource, memory
 version, and invitation. They check permissions, expiration, persistent
 fencing, paths, atomic batches, and the absence of secrets in audit logs.
@@ -301,18 +346,15 @@ means and for the limits CI does not yet cover.
 
 ## Next deliveries
 
-1. **A first run that needs no instructions.** `cshcli start` asks for a name, a
-   provider and a key, stores the key locally with restricted permissions, and
-   leaves you with a working project. The existing commands stay.
-2. **An install command, and `cshcli update`.** `cshcli update` compares and
-   reports without changing anything; `update --apply` asks you to type the
-   version and checks the checksum first, deleting the download if it does not
-   match. There is **No published release yet**, so today it answers
-   `unknown` rather than pretending you are up to date.
-3. **A remote coordinator.** `cshcli serve --remote` over HTTPS with the
-   database on a private network. **Not available yet and not claimed to be.**
-4. Per-environment deployment with a real provider, chaos drills, a proven
-   restore, and a signed release with checksums.
+1. **A conversational `cshcli` loop**, so a ready session drops straight into
+   chat instead of naming the next command.
+2. **A remote coordinator.** `cshcli serve --remote` over HTTPS with PostgreSQL
+   on a private network. **Not available yet and not claimed to be.**
+3. A real PostgreSQL concurrency and restore drill, plus deployment against a
+   real provider from more than one machine.
+4. A signed, published release whose wheel and `SHA256SUMS` URLs are exercised
+   end to end by `cshcli update --apply`.
+5. Windows protection for `.cshcli/keys.json` beyond ordinary file placement.
 
 The [online plan](docs/PLAN-ONLINE.md) has the reasoning and the order. The
 [status](docs/STATUS.md) says exactly what has and has not been exercised.

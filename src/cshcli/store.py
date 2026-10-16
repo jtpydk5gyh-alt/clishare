@@ -627,12 +627,6 @@ class Store:
         return dict(lease)
 
     def validate_lease(self, user_id, project_id, lease_id, fence, resource=None):
-        """Answers whether a write is authorised right now, and nothing more.
-
-        A runner calls this immediately before touching its workspace. The
-        answer is a moment, not a permission: the lease may expire one
-        second later, and the publication gate checks again for that reason.
-        """
         with self._connection() as connection:
             self._authorize(connection, user_id, project_id)
             lease = self._held_lease(connection, user_id, project_id, lease_id, fence)

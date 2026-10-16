@@ -1,26 +1,3 @@
-"""Checking for an update, and installing one only when asked twice.
-
-The owner asked for self-updating. Installing code without being asked is a
-bad idea even when the code is ours, and here there is a concrete reason rather
-than a principle: installing from `main` is installing code that is neither
-versioned nor reviewed. A tool that quietly fetched that would be worse than no
-updater at all.
-
-So `update` is two commands wearing one name:
-
-- `cshcli update` **compares and reports**. It changes nothing on disk.
-- `cshcli update --apply` asks you to type the version, then verifies the
-  checksum of what it downloaded **before** touching anything already installed.
-
-The checksum matters because the install path the owner asked about is a zip
-from GitHub. Anyone serving that path can put anything in it. `verify` exists
-because a download that fails verification must leave no trace, not a
-half-installed package.
-
-Both halves refuse to act on a branch other than `main`, and neither can turn
-an unverified artefact into an installed one.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -57,7 +34,6 @@ def parse_version(value: str) -> tuple[int, ...]:
 
 
 def newest_remote_version(opener=urllib.request.urlopen) -> str | None:
-    """Returns the published version, or None when there is no release."""
     request = urllib.request.Request(
         RELEASES_API, headers={"Accept": "application/vnd.github+json",
                                "User-Agent": "cshcli"})
@@ -77,7 +53,6 @@ def newest_remote_version(opener=urllib.request.urlopen) -> str | None:
 
 
 def compare(installed: str, published: str | None) -> dict:
-    """Reports what is true. It never says "up to date" without checking."""
     report = {"installed": installed, "published": published,
               "action": "none", "from_main": True,
               "archive": ARCHIVE_ROOT,
@@ -108,7 +83,6 @@ def compare(installed: str, published: str | None) -> dict:
 
 
 def fetch_checksums(url: str, opener=urllib.request.urlopen) -> dict[str, str]:
-    """Reads a SHA256SUMS file. Returns name to digest."""
     request = urllib.request.Request(url, headers={"User-Agent": "cshcli"})
     try:
         with opener(request, timeout=15) as response:
@@ -146,12 +120,6 @@ def download(url: str, destination: Path, opener=urllib.request.urlopen) -> Path
 
 
 def install(source: Path, expected_digest: str) -> dict:
-    """Verifies before installing, and refuses to install what it cannot check.
-
-    A wheel that fails verification is deleted rather than left next to the
-    installation, because a file that looks like a package is worse than no
-    file at all.
-    """
     import subprocess
     import sys
     if not verify(source, expected_digest):

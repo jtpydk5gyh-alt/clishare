@@ -1,20 +1,3 @@
-"""A task DAG where claiming a task and taking its leases are one decision.
-
-Five agents see the same backlog and race for it. The failure this module
-exists to prevent is a task marked running whose leases were never acquired,
-or leases taken by a task that never started because a dependency failed.
-Both are worse than a refusal, because both look like progress.
-
-So `claim` does the dependency check, the state check and the lease
-acquisition inside one write transaction. There is no window in which a task
-is running without holding what it needs, and no window in which leases are
-held by something that is not running.
-
-A cycle is refused when the task is created and refused again when it is
-modified. Refusing only on create would let an edit smuggle a cycle past a
-check that already ran.
-"""
-
 from __future__ import annotations
 
 import json

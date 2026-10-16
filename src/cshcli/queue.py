@@ -1,30 +1,3 @@
-"""The queue that turns an accepted artefact into a merge, one project at a time.
-
-`IntegrationGate.accept_patch` records that an artefact is worth considering.
-It is not a merge, and deliberately does not hold a file reserved for as long
-as a human takes to review it. Somebody has to do the merging, and this is
-that part.
-
-The rules it exists to keep:
-
-- **One integration per project at a time.** Two patches composed at once is
-  how two agents each "see" the other's change as absent.
-- **The base is recomputed, never trusted.** A second patch submitted against
-  the same SHA as the first is rebased onto whatever the branch actually
-  serves now, and the checks run on the composed result.
-- **The branch moves only if it is still where it was.** The update is a
-  compare-and-swap against the SHA that was observed before the checks ran.
-  Long tests happen before that short operation; anything that moved the
-  branch meanwhile forces the work to be recomputed.
-- **The integrator takes its own leases.** It never reuses a fence the runner
-  released, because that fence could have been handed to someone else.
-- **The checkout is dedicated.** Nothing here touches the user's workspace, and
-  `reset --hard` never runs against it.
-
-A conflict or a failing check leaves the item in `review` or `failed`. There is
-no path here that merges silently.
-"""
-
 from __future__ import annotations
 
 import subprocess
@@ -65,11 +38,12 @@ CREATE INDEX IF NOT EXISTS integration_queue_order
 
 
 class IntegrationQueue:
-    def __init__(self, store, repository: Path, integration_branch: str = "integration",
+    def __init__(self, store, repository: Path | None = None,
+                 integration_branch: str = "integration",
                  checks: Callable[[Path], bool] | None = None,
                  clock: Callable[[], float] = time.time):
         self.store = store
-        self.repository = Path(repository)
+        self.repository = Path(repository) if repository is not None else None
         self.integration_branch = integration_branch
         self.checks = checks
         self.clock = clock
@@ -80,7 +54,7 @@ class IntegrationQueue:
                task_id: str | None = None) -> dict:
         commit_sha = _sha(commit_sha, "commit_sha")
         base_sha = _sha(base_sha, "base_sha")
-        if not _exists(self.repository, commit_sha):
+        if not _exists(self._repository(), commit_sha):
             raise DomainError(404, "commit_not_found",
                               "That commit does not exist in the linked repository.")
         now = self.clock()
@@ -99,6 +73,7 @@ class IntegrationQueue:
                               {"queue_id": identifier, "commit_sha": commit_sha,
                                "base_sha": base_sha})
             return self._load(connection, identifier)
+
     def process_next(self, project_id: str) -> dict:
         with self.store._connection() as connection:
             if not connection.execute("SELECT 1 FROM projects WHERE id = ?",
@@ -119,6 +94,12 @@ class IntegrationQueue:
 
     def get(self, project_id: str, identifier: str) -> dict:
         with self.store._connection() as connection:
+            row = connection.execute(
+                "SELECT id FROM integration_queue WHERE id = ? AND project_id = ?",
+                (identifier, project_id)).fetchone()
+            if row is None:
+                raise DomainError(404, "queue_not_found",
+                                  "That queue entry does not exist in this project.")
             return self._load(connection, identifier)
 
     def list(self, project_id: str) -> list[dict]:
@@ -128,6 +109,10 @@ class IntegrationQueue:
                 (project_id,))]
 
     def _process(self, identifier: str) -> dict:
+        repository = self._repository()
+        if self.checks is None:
+            raise DomainError(409, "checks_not_configured",
+                              "Configure integration checks before processing the queue.")
         with self.store._connection() as connection:
             row = connection.execute("SELECT * FROM integration_queue WHERE id = ?",
                                      (identifier,)).fetchone()
@@ -136,7 +121,7 @@ class IntegrationQueue:
         if observed is None:
             return self._settle(identifier, REVIEW,
                                 detail="The integration branch does not exist yet.")
-        checkout = _Checkout(self.repository, self.integration_branch)
+        checkout = _Checkout(repository, self.integration_branch)
         try:
             checkout.reset_to(observed)
             rebased = checkout.cherry_pick(commit_sha)
@@ -173,12 +158,6 @@ class IntegrationQueue:
         return cursor.rowcount
 
     def _service_identity(self, project_id_or_queue: str) -> str:
-        """The integrator acts under the project owner, never a member's.
-
-        The queue is not a person. It needs a real user id for the audit
-        trail, so it resolves the project owner, and it does not borrow a
-        member's leases or authorisation to do the work.
-        """
         with self.store._connection() as connection:
             row = connection.execute(
                 "SELECT project_id FROM integration_queue WHERE id = ?",
@@ -191,10 +170,17 @@ class IntegrationQueue:
             raise DomainError(404, "project_not_found", "Project does not exist.")
         return owner["user_id"]
 
+    def _repository(self) -> Path:
+        if self.repository is None:
+            raise DomainError(409, "repository_not_configured",
+                              "Set CSHCLI_REPOSITORY or name a repository; the integration "
+                              "queue will not guess one.")
+        return self.repository
+
     def _branch_sha(self) -> str | None:
         result = subprocess.run(["git", "rev-parse", "--verify", "--quiet",
                                  f"refs/heads/{self.integration_branch}"],
-                                cwd=self.repository, capture_output=True, text=True)
+                                cwd=self._repository(), capture_output=True, text=True)
         answer = result.stdout.strip()
         return answer or None
 
@@ -232,8 +218,6 @@ class IntegrationQueue:
 
 
 class _Checkout:
-    """A worktree of the repository that belongs to the integrator alone."""
-
     def __init__(self, repository: Path, branch: str):
         self.repository = Path(repository)
         self.branch = branch
@@ -256,7 +240,10 @@ class _Checkout:
         return _git(self.path, "rev-parse", "HEAD").stdout.strip()
 
     def push_fast_forward(self, expected: str, tested: str) -> str | None:
-        _git(self.path, "update-ref", f"refs/heads/{self.branch}", tested, expected)
+        result = _git(self.path, "update-ref", f"refs/heads/{self.branch}",
+                      tested, expected, check=False)
+        if result.returncode != 0:
+            return None
         return tested
 
     def close(self) -> None:

@@ -50,7 +50,6 @@ class RewriteHelperTests(unittest.TestCase):
             os.chdir(previous)
 
     def test_a_dirty_tree_is_refused_before_any_reset(self):
-        """The helper hard-resets main, so it must never do that over work."""
         repository = self.repository()
         self.commit(repository, "a.txt", "one\n", "base")
         (repository / "a.txt").write_text("two\n", encoding="utf-8")
@@ -61,7 +60,6 @@ class RewriteHelperTests(unittest.TestCase):
         self.assertEqual((repository / "a.txt").read_text(encoding="utf-8"), "two\n")
 
     def test_the_restored_ruleset_keeps_the_required_guard(self):
-        """Restoring protection from a stale copy silently drops rules."""
         contexts = [rule for rule in helper.INTEGRITY_RULES
                     if rule["type"] == "required_status_checks"]
         self.assertEqual(len(contexts), 1)
@@ -71,7 +69,6 @@ class RewriteHelperTests(unittest.TestCase):
         self.assertTrue(parameters["strict_required_status_checks_policy"])
 
     def test_the_solo_owner_review_rule_is_disabled(self):
-        """It demands an approval from someone else and can never be met."""
         pull = [rule for rule in helper.INTEGRITY_RULES
                 if rule["type"] == "pull_request"]
         self.assertEqual(len(pull), 1)
@@ -79,7 +76,6 @@ class RewriteHelperTests(unittest.TestCase):
             pull[0]["parameters"]["require_extra_approval_for_unattributed_changes"])
 
     def test_only_one_ruleset_is_recreated(self):
-        """A duplicate update ruleset blocked every merge; do not bring it back."""
         calls = []
         helper.gh = lambda *arguments, input_text=None: calls.append(
             (arguments, input_text)) or type("R", (), {"stdout": "", "returncode": 0})()
@@ -94,7 +90,6 @@ class RewriteHelperTests(unittest.TestCase):
         self.assertNotIn("main-owner-merge", payload)
 
     def test_the_private_relay_is_never_written_out_in_full(self):
-        """The forbidden address is assembled from pieces, never written whole."""
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertNotIn(helper.FORBIDDEN, source)
         self.assertNotIn("privaterelay.appleid.com", source)

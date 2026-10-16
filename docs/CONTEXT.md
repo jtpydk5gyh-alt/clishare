@@ -6,8 +6,9 @@ agente pueda orientarse sin releer la conversación.
 
 ## Dónde está el proyecto hoy
 
-**Versión 0.2.0, publicada con checksum.** 46 commits, todos con noreply. 423
-tests verdes, 4 omitidos con su motivo. CI verde en Windows y Linux × Python
+**Versión 0.4.0, construida localmente con checksum; no publicada ni firmada.**
+52 commits en `origin/main`, todos con noreply. La suite local actual y sus
+omisiones justificadas se registran abajo. CI verde en Windows y Linux × Python
 3.11, 3.12 y 3.13. Un solo ruleset, `main-integrity`, con `Personal data
 guard` como control obligatorio.
 
@@ -33,12 +34,12 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | Dato | Valor |
 | --- | --- |
 | Repositorio | `jtpydk5gyh-alt/cshcli`, público, licencia MIT |
-| Versión | `0.3.0`, con `dist/SHA256SUMS` |
-| Rama por defecto | `main`, 46 commits, todos con la noreply de GitHub |
+| Versión | `0.4.0`, artefacto local con `dist/SHA256SUMS`; no publicado ni firmado |
+| Rama por defecto | `main`, 52 commits en `origin/main`, todos con la noreply de GitHub |
 | Módulo Python | `cshcli`, 21 módulos, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
-| PRs mergeadas | 34, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 506, verdes salvo 5 omitidas: 2 por symlink y 2 por no haber PostgreSQL |
+| PRs mergeadas | 58, sin `--admin`: el control obligatorio se respeta |
+| Pruebas | 537 verdes; 5 omitidas: 2 por symlink, 2 por no haber PostgreSQL y 1 permiso POSIX en Windows |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
@@ -178,8 +179,9 @@ Decisiones del propietario, 15 de octubre, en el orden en que se tomaron:
 2. Después, la cola del 8B, el 10 y el 11. **Los tres hechos.**
 3. Un plan escrito **antes** de tocar código, para online, simplicidad y
    actualización automática. **Escrito** en `docs/PLAN-ONLINE.md`.
-4. Versionar después de un cambio grande. **Hecho**: `0.2.0` con checksum y la
-   copia instalada verificada.
+4. Versionar después de un cambio grande. **Hecho**: `0.3.0` con checksum y la
+   copia instalada verificada, y `0.4.0` tras el menú y el coordinador
+   implícito. Publicar y firmar siguen pendientes.
 
 Lo que queda, en orden y con su bloqueo declarado, está en la tabla de arriba.
 Lo único que **no** se puede cerrar aquí es el almacenamiento PostgreSQL y el
@@ -396,9 +398,9 @@ existe ningún camino por el que esto fusione en silencio. Y una revocación
 tras la aceptación **suspende** la cola en vez de integrar bajo el permiso
 antiguo: `process_next` lanza `integration_suspended` y espera a una persona.
 
-## Versionado: por qué 0.2.0 y no 0.1.1
+## Versionado: por qué 0.2.0, 0.3.0 y 0.4.0
 
-Decisión del propietario: **después de un cambio grande se versiona**. Dos
+Decisión del propietario: **después de un cambio grande se versiona**. Tres
 veces, con dos razones distintas:
 
 - **`0.1.0` → `0.2.0`**: runner, DAG, cola, despliegues, presupuestos e
@@ -409,6 +411,10 @@ veces, con dos razones distintas:
   `cshcli update` con checksum, los ensayos de caos y el ensayo de
   restauración. Otra vez capacidades nuevas, y otra vez el mismo motivo para
   no ser un parche.
+- **`0.3.0` → `0.4.0`**: el menú de `start` que ejecuta, el coordinador
+  implícito, la sesión local, las rutas HTTP de la cola y el cierre del
+  compare-and-swap. Sigue siendo romper una capacidad anterior —`start` ya no
+  es un impresor— y añadir una nueva, así que tampoco es un parche.
 
 `scripts/release.py` construye, genera `SHA256SUMS` y **verifica la copia
 instalada**, no el árbol de trabajo: probar el árbol no probaría el artefacto.
@@ -858,3 +864,98 @@ git for-each-ref --format='%(refname)' | while read r; do
 done | sort -u                                              # una sola línea
 git fsck --no-reflogs                                       # sin salida
 ```
+
+## Menú de inicio y coordinador implícito
+
+`cshcli start` era un impresor: decía qué comando tocar a continuación y quien
+lo usaba tenía que abrir una segunda terminal, ejecutar `serve`, y volver a
+correr `start` cuatro veces. El recorrido de una persona nueva eran ocho pasos.
+
+Ahora es un menú de dos opciones y hace el trabajo:
+
+- **1) Sesión** — identidad, proyecto y clave, todo en local.
+- **2) Unirme o crear** — con código de invitación entra al proyecto de otra
+  persona; sin él crea uno y muestra un código para compartir.
+
+La decisión estructural es que **el coordinador dejó de ser algo que el usuario
+arranca**. Si `CSHCLI_URL` no está y nada escucha en 8765, cada comando levanta
+su propio coordinador dentro del proceso, en un puerto efímero, y lo cierra al
+salir. `.cshcli/session.json` guarda nombre, proyecto y token, así que los
+comandos siguientes funcionan sin `--url` y sin `CSHCLI_TOKEN`.
+
+Esto es posible porque el coordinador no tiene estado en memoria que importe:
+todo vive en SQLite.
+
+El costo de concurrencia es real y está declarado: antes, con un solo proceso
+`serve`, "una integración por proyecto a la vez" se apoyaba en que había un
+único coordinador. Ahora hay uno por comando. La corrección la sostiene el
+archivo —transacciones, fences y leases viven en la base y SQLite tiene
+`busy_timeout` de 30 s—, pero la garantía pasó de ser arquitectónica a depender
+del bloqueo de la base. Hay una prueba de dos coordinadores embebidos
+compartiendo una misma base, y no se declara más de lo que eso prueba.
+
+El bug más útil de esta tanda salió de las pruebas, no de la revisión: tras
+registrarse, el wizard dejaba el cliente sin token y todo lo siguiente devolvía
+401. También se corrigió que `run_wizard` tomara `input` como valor por defecto,
+lo que lo fijaba en la importación e impedía probarlo, y que el token se
+validara **después** de levantar un coordinador: ahora se rechaza antes, sin
+arrancar nada.
+
+Los tests de `start` que fijaban el comportamiento anterior fueron reemplazados
+por los de `tests/test_wizard.py`, que cubren las dos ramas del menú, la clave
+vacía, la opción inválida, la sesión ya lista, la terminal no interactiva y dos
+coordinadores embebidos sobre la misma base.
+
+## Cola HTTP local y regla de estilo restaurada
+
+La cola de integración ya está cableada al servidor HTTP local. Las rutas
+permiten enviar, listar, leer y procesar entradas bajo el proyecto autenticado.
+Las lecturas no exigen una ruta Git; enviar o procesar sí exige una ruta en el
+cuerpo o `CSHCLI_REPOSITORY`.
+
+El procesado **falla cerrado**. `CSHCLI_INTEGRATION_CHECK` debe contener un
+array JSON de comando, por ejemplo
+`["python","-m","unittest","discover","-s","tests"]`. El comando se ejecuta
+sin shell dentro del worktree dedicado, con un timeout de 240 segundos. Si no
+está configurado, una cola no vacía devuelve `409 checks_not_configured` y la
+rama no se mueve. Conflictos,
+checks fallidos y un branch que cambia durante los checks siguen sin fusionarse
+en silencio.
+
+El error HTTP original tenía dos causas: la ruta contaba cinco segmentos donde
+`/v1/projects/{id}/queue` tiene cuatro, y el servidor llamaba a
+`IntegrationQueue.submit` y `process_next` con una firma que no existía. El
+contrato vuelve a ser uno: repositorio y branch configuran la instancia; las
+operaciones reciben solo los identificadores de dominio.
+
+La exposición HTTP también obligó a cerrar dos fugas de ámbito. Leer una
+entrada por id ahora exige que pertenezca al proyecto de la URL; un miembro de
+otro proyecto recibe `404 queue_not_found`. Y solo el `owner` puede nombrar
+`repository` o `branch` en una petición: un `writer` que lo intente recibe
+`403 repository_override_forbidden`, de modo que nadie que no sea el operador
+puede apuntar el integrador a otra ruta del host.
+
+Se restauró además la regla del propietario de no mantener comentarios ni
+docstrings explicativos en código. Una auditoría AST cubre `src/`, `tests/` y
+`scripts/`; no quedan docstrings. La búsqueda de comentarios explicativos no
+devuelve coincidencias. Las cadenas multilínea de esquemas SQL y del proceso
+hijo son datos ejecutables y no se tocaron.
+
+La revisión independiente encontró un defecto real que las pruebas no veían: el
+compare-and-swap de la rama ejecutaba `update-ref` con `check=True`, así que
+`push_fast_forward` nunca podía devolver `None`. La ruta "la rama se movió
+antes de actualizar" era inalcanzable y la carrera escapaba como error interno
+en vez de un `review`. Corregido con `check=False` y una prueba que mueve la
+rama justo antes de la actualización.
+
+La otra observación del revisor sigue **abierta y declarada**: la ruta HTTP de
+la cola integra commits que pueden no haber pasado por
+`IntegrationGate.accept_patch`. La puerta existe y valida generación, fences y
+recursos, pero la cola no la exige todavía. No es una regresión de este cambio
+—la cola local nunca la hectaresobrido— y cerrar el hueco exige decidir si la
+cola debe exigir una aceptación previa o si la puerta pasa a ser el único punto
+de entrada. Queda como trabajo pendiente explícito.
+
+Cierre reproducible de esta tanda: las 13 pruebas HTTP de la cola pasan; la
+suite completa pasa con **537 tests en 337.217 s** y 5 omisiones justificadas.
+`compileall` sobre `src`, `tests` y `scripts` termina sin salida.

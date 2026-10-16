@@ -34,6 +34,20 @@ Publishing is a manual step and stays manual while there is one owner.
 
 ## The release history
 
+### 0.4.0 — 16 October 2026
+
+`cshcli start` became a two-option menu that performs the setup, and the
+coordinator became implicit, so no server is started first. A local wheel and
+`SHA256SUMS` were built and the installed copy exercised; they are not signed or
+published.
+
+### 0.3.0 — 15 October 2026
+
+A local wheel and `SHA256SUMS` were built and the installed copy was exercised.
+They were not signed or published. The HTTP integration-queue work in the
+current working tree is newer than that artefact, so the wheel must be rebuilt
+after this work is committed before it can represent the source again.
+
 ### 0.2.0 — 15 October 2026
 
 The coordination layer grew past the point where "local pilot" described it

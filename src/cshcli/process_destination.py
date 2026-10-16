@@ -1,29 +1,3 @@
-"""A destination that lives outside this process.
-
-`InProcessDestination` in `deploy.py` proves the coordination: idempotence,
-approval binding, fencing, reconciliation and rollback. It proves none of it
-against anything real, because a dictionary in the same process cannot lose an
-answer, cannot refuse a connection and cannot be stopped by anything the worker
-does.
-
-This module provides the thing the plan's acceptance line actually asks for. A
-destination that:
-
-- writes the active digest to a directory, from a **separate process**, so the
-  state survives the worker and can be read by another process entirely;
-- answers `health` over a **real HTTP request** to localhost, through a server
-  thread that is genuinely reachable and genuinely slow;
-- can be made to **time out for real**, by pointing the health check at a
-  socket that accepts and never replies, rather than by raising a flag;
-- can be made to **fail health for real**, by stopping the server, so the
-  failure is a refused connection rather than a dictionary lookup.
-
-The child process is a plain interpreter running a tiny script. Nothing here
-is a cloud provider and nothing here should be described as one. What it does
-prove is that the worker's failure handling survives a destination that fails
-in the ways real ones fail, which an in-memory object cannot.
-"""
-
 from __future__ import annotations
 
 import http.client
@@ -65,13 +39,6 @@ print(json.dumps(record))
 
 
 class BlackHole:
-    """A socket that accepts the connection and never answers.
-
-    A refused connection is a failure; a connection that hangs is a timeout.
-    The worker's behaviour differs between the two, so the test needs the
-    second one and cannot have it from a flag.
-    """
-
     def __init__(self):
         self._socket = socket.socket()
         self._socket.bind(("127.0.0.1", 0))
@@ -132,8 +99,6 @@ def _read(path: Path) -> str | None:
 
 
 class ProcessDestination:
-    """Writes state from a child process and answers health over HTTP."""
-
     def __init__(self, root: Path, interpreter: str | None = None):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
