@@ -47,20 +47,25 @@ pregunta lleva la memoria compartida del proyecto.
 
 Falta para lo que se pidió en el punto 2: un chat que hable con alguien **sobre
 el trabajo de esa persona**. La primera pregunta lleva ahora un índice de los
-archivos de la carpeta desde la que se abrió el CLI, y `/ver <ruta>` mete un
-archivo entero en la conversación.
+archivos de la carpeta desde la que se abrió el CLI, `/buscar <texto>` encuentra
+dónde vive algo y `/ver <ruta>` mete un archivo entero en la conversación.
 
 Las tres decisiones que importan aquí:
 
 1. **El índice es la carpeta actual, no el proyecto del coordinador.** Quien
    escribe `cshcli` dentro de su repositorio quiere que el agente hable de ese
    repositorio, no de una lista de nombres de archivo guardados en SQLite.
-2. **Leer reutiliza `Workspace`.** Es el mismo resolvedor que usa el runner
-   mediado: rutas absolutas, `..`, metadatos de Git, symlinks, junctions y hard
-   links se rechazan igual que al escribir. No se ha creado una segunda puerta.
-3. **No se ejecuta nada.** El chat lee; no corre comandos. Un agente que abre
-   una puerta de ejecución aquí sería un sandbox nuevo, y el sandbox sigue sin
-   existir.
+2. **Leer y buscar reutilizan `Workspace`.** Es el mismo resolvedor que usa el
+   runner mediado: rutas absolutas, `..`, metadatos de Git, symlinks, junctions
+   y hard links se rechazan igual que al escribir. No se ha creado una segunda
+   puerta.
+3. **No se ejecuta nada.** El chat lee y busca; no corre comandos. Un agente que
+   abre una puerta de ejecución aquí sería un sandbox nuevo, y el sandbox sigue
+   sin existir.
+
+**Una decisión sobre el gasto:** una búsqueda sin resultados **no llama al
+proveedor**. Imprime que no hay nada y sigue. Pagar una llamada para que un
+modelo te diga "no encontré nada" no ayuda a nadie, y aquí se puede saber antes.
 
 Lo que **no** se ha hecho, y sigue pendiente de una decisión: que el agente
 *pueda cambiar* un archivo. Eso necesita la puerta de publicación y un

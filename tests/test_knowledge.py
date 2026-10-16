@@ -10,7 +10,7 @@ from unittest import mock
 
 from cshcli.cli import _chat_loop
 from cshcli.errors import DomainError
-from cshcli.knowledge import index_text, note_text
+from cshcli.knowledge import index_text, note_text, search_text
 from cshcli.onboarding import run_loop
 
 
@@ -198,6 +198,123 @@ class ChatNoteTests(unittest.TestCase):
                  out=io.StringIO().write, note=lambda path: "```\ncontenido\n```")
         self.assertEqual(self.seen[0], "```\ncontenido\n```")
         self.assertEqual(self.seen[1], "y que hace?")
+
+
+class SearchTests(ProjectTests):
+    def test_a_hit_names_the_file_and_the_line(self):
+        self.write("src/app.py", "uno\ndos\ndef run():\n    return 3\n")
+        text = search_text(self.root, "def run")
+        self.assertIn("src/app.py", text)
+        self.assertIn("src/app.py:3: def run():", text)
+        self.assertIn("coincidencia", text)
+
+    def test_the_match_is_counted_with_its_line_number(self):
+        self.write("src/app.py", "uno\ndos\ndef run():\n    return 3\n")
+        text = search_text(self.root, "return 3")
+        self.assertIn("src/app.py:4:", text)
+
+    def test_it_does_not_distinguish_case(self):
+        self.write("src/app.py", "class Runner:\n")
+        self.assertIn("src/app.py", search_text(self.root, "runner"))
+        self.assertIn("src/app.py", search_text(self.root, "RUNNER"))
+
+    def test_hits_in_several_files_are_all_reported(self):
+        self.write("src/app.py", "runner\n")
+        self.write("docs/plan.md", "el runner\n")
+        text = search_text(self.root, "runner")
+        self.assertIn("src/app.py", text)
+        self.assertIn("docs/plan.md", text)
+
+    def test_nothing_found_is_an_empty_answer_not_a_guess(self):
+        self.assertEqual(search_text(self.root, "ausente"), "")
+
+    def test_an_empty_query_is_refused(self):
+        with self.assertRaises(DomainError) as caught:
+            search_text(self.root, "   ")
+        self.assertEqual(caught.exception.code, "empty_query")
+
+    def test_noise_and_binaries_are_never_searched(self):
+        self.write(".git/config", "[runner]\n")
+        self.write("src/__pycache__/app.pyc", "runner\n")
+        (self.root / "docs" / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00runner")
+        text = search_text(self.root, "runner")
+        self.assertNotIn(".git/config", text)
+        self.assertNotIn("app.pyc", text)
+        self.assertNotIn("logo.png", text)
+
+    def test_the_answer_is_capped(self):
+        self.write("grande.txt", "runner\n" * 500)
+        text = search_text(self.root, "runner", limit=300)
+        self.assertLessEqual(len(text), 300)
+
+    def test_a_crowded_project_says_how_many_more_there_are(self):
+        for index in range(12):
+            self.write(f"mucho{index}.txt", "runner\n")
+        text = search_text(self.root, "runner", matches=5)
+        self.assertEqual(text.count("- mucho"), 5)
+        self.assertIn("7", text)
+
+    def test_a_folder_that_cannot_be_read_is_reported(self):
+        with self.assertRaises(DomainError) as caught:
+            search_text(self.root / "no-existe", "runner")
+        self.assertEqual(caught.exception.code, "workspace_missing")
+
+    def test_a_link_pointing_outside_is_never_read(self):
+        outside = Path(self.temp.name).parent / "cshcli-secreto.txt"
+        outside.write_text("runner\n", encoding="utf-8", newline="\n")
+        self.addCleanup(outside.unlink)
+        try:
+            os.symlink(outside, self.root / "escape.txt")
+        except OSError:
+            self.skipTest("symbolic links are not available here")
+        self.assertEqual(search_text(self.root, "runner"), "")
+
+
+class ChatSearchTests(unittest.TestCase):
+    def setUp(self):
+        self.seen = []
+
+    def ask(self, provider, model, prompt, history):
+        self.seen.append(prompt)
+        return "r"
+
+    def test_buscar_puts_the_hits_in_the_conversation(self):
+        run_loop("openai", "m", self.ask, reader=Script(["/buscar run", "/salir"]),
+                 out=io.StringIO().write, search=lambda query: "- src/app.py:3: def run():")
+        self.assertEqual(self.seen, ["- src/app.py:3: def run():"])
+
+    def test_nothing_found_is_reported_without_asking_the_provider(self):
+        out = io.StringIO()
+        code = run_loop("openai", "m", self.ask, reader=Script(["/buscar nada", "/salir"]),
+                        out=out.write, search=lambda query: "")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.seen, [])
+        self.assertIn("nada", out.getvalue())
+
+    def test_buscar_without_a_query_asks_for_one(self):
+        out = io.StringIO()
+        run_loop("openai", "m", self.ask, reader=Script(["/buscar", "/salir"]),
+                 out=out.write, search=lambda query: "x")
+        self.assertEqual(self.seen, [])
+        self.assertIn("texto", out.getvalue())
+
+    def test_buscar_without_the_capability_is_refused_instead_of_sent(self):
+        out = io.StringIO()
+        run_loop("openai", "m", self.ask, reader=Script(["/buscar run", "/salir"]),
+                 out=out.write)
+        self.assertEqual(self.seen, [])
+        self.assertIn("/buscar", out.getvalue())
+
+    def test_a_refused_search_keeps_the_loop(self):
+        out = io.StringIO()
+
+        def search(query):
+            raise DomainError(400, "workspace_missing", "No se puede leer esta carpeta.")
+
+        run_loop("openai", "m", self.ask, reader=Script(["/buscar x", "hola", "/salir"]),
+                 out=out.write, search=search)
+        self.assertIn("workspace_missing", out.getvalue())
+        self.assertEqual(self.seen, ["hola"])
 
 
 class ChatWiringTests(unittest.TestCase):

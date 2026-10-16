@@ -99,6 +99,8 @@ MENU = (
 
 NOTE_MISSING_ARGUMENT = "  /ver necesita una ruta: /ver src/cshcli/cli.py"
 NOTE_UNAVAILABLE = "  /ver no está disponible aquí."
+SEARCH_MISSING_ARGUMENT = "  /buscar necesita un texto: /buscar accept_patch"
+SEARCH_UNAVAILABLE = "  /buscar no está disponible aquí."
 
 
 def _ask(prompt, reader, out):
@@ -209,7 +211,8 @@ def project_context(entries, name, limit=8000):
     return text[:limit]
 
 
-def run_loop(provider, model, ask, reader=None, out=None, keep=20, context=None, note=None):
+def run_loop(provider, model, ask, reader=None, out=None, keep=20, context=None,
+             note=None, search=None):
     reader = reader or input
     out = out or print
     history = []
@@ -243,6 +246,23 @@ def run_loop(provider, model, ask, reader=None, out=None, keep=20, context=None,
             except DomainError as error:
                 out(f"[{error.code}] {error}")
                 continue
+        if line == "/buscar" or line.startswith("/buscar "):
+            if search is None:
+                out(SEARCH_UNAVAILABLE)
+                continue
+            requested = line[len("/buscar"):].strip()
+            if not requested:
+                out(SEARCH_MISSING_ARGUMENT)
+                continue
+            try:
+                found = search(requested)
+            except DomainError as error:
+                out(f"[{error.code}] {error}")
+                continue
+            if not found:
+                out(f'  Nada en este proyecto contiene "{requested}".')
+                continue
+            line = found
         prompt = f"{context}\n\n{line}" if context and not sent else line
         try:
             answer = ask(provider, model, prompt, list(history))
