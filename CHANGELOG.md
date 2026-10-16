@@ -7,7 +7,21 @@ once it leaves alpha.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-16
+
+The chat stops starting from nothing.
+
 ### Added
+- The chat's first question carries the project's shared memory as a delimited
+  block, capped at 8000 characters, so a conversation starts from what the team
+  already decided instead of from nothing. An entry with an empty key or empty
+  content is skipped rather than rendered as a malformed line.
+- `project_context` builds that block, and `run_loop` takes it as `context`.
+
+The block travels as part of the first user question rather than as a separate
+system message: each provider spells that differently and none of it has been
+checked against a live API.
+
 - `scripts/bump_version.py` and `tests/test_bump_version.py`. The script rewrites
   the version across the package and the documents and refuses when a sentence
   no longer matches exactly once; the test asserts that property against the
@@ -135,7 +149,7 @@ what to run next. It is now one command that does the work.
   ever prints a key, and a test checks that asking about one provider does not
   reveal another's.
 - Recorded where the project actually stands: version 0.3.0, 52 commits on
-  `origin/main`, 573 passing tests, and a table that says for each remaining
+  `origin/main`, 581 passing tests, and a table that says for each remaining
   item whether it can be done on this machine. The document states what cannot
   be checked instead of implying it.
 - `docs/STATUS.md` gained a "What is verified, and what is not" heading, a
@@ -285,7 +299,7 @@ what to run next. It is now one command that does the work.
   leaving `main` with a red suite.
 
 ### Verification
-- **573 tests pass**, with 5 explicit skips: two symbolic-link cases, two real
+- **581 tests pass**, with 5 explicit skips: two symbolic-link cases, two real
   PostgreSQL cases, and one POSIX permission case on Windows.
 - **CI is active** and green on Windows and Linux with Python 3.11, 3.12 and
   3.13.

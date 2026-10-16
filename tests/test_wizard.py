@@ -12,9 +12,10 @@ from cshcli.cli import main
 from cshcli.client import Client
 from cshcli.errors import DomainError
 from cshcli.local import EmbeddedCoordinator, connect
-from cshcli.onboarding import Keyring, run_loop, run_wizard
+from cshcli.onboarding import Keyring, project_context, run_loop, run_wizard
 from cshcli.server import make_server
 from cshcli.session import Session
+from cshcli.store import Store
 
 
 class Script:
@@ -300,6 +301,64 @@ class LoopTests(unittest.TestCase):
         self.assertEqual(self.output.getvalue().count("[api_key_missing]"), 2)
 
 
+class ContextTests(unittest.TestCase):
+    def test_entries_become_a_readable_block(self):
+        text = project_context([{"key": "arquitectura", "content": "un worktree por tarea"},
+                                {"key": "estilo", "content": "PEP8"}], "demo")
+        self.assertIn("Contexto compartido del proyecto 'demo'", text)
+        self.assertIn("- arquitectura: un worktree por tarea", text)
+        self.assertIn("- estilo: PEP8", text)
+
+    def test_no_entries_means_no_context(self):
+        self.assertEqual(project_context([], "demo"), "")
+        self.assertEqual(project_context([{"key": "a"}], "demo"), "")
+
+    def test_an_unusable_entry_is_skipped(self):
+        text = project_context(["basura", {"key": "", "content": "x"},
+                                {"key": "k", "content": "  "},
+                                {"key": "ok", "content": "sí"}], "demo")
+        self.assertIn("- ok: sí", text)
+        self.assertNotIn("- :", text)
+        self.assertEqual(text.count("\n- "), 1)
+
+    def test_a_huge_memory_is_cut(self):
+        text = project_context([{"key": "k", "content": "x" * 20000}], "demo")
+        self.assertEqual(len(text), 8000)
+
+    def test_the_context_reaches_only_the_first_turn(self):
+        seen = []
+
+        def ask(provider, model, prompt, history):
+            seen.append(prompt)
+            return "r"
+
+        run_loop("openai", "m", ask, reader=Script(["uno", "dos", "/salir"]),
+                 out=io.StringIO().write, context="CONTEXTO")
+        self.assertEqual(seen, ["CONTEXTO\n\nuno", "dos"])
+
+    def test_clearing_lets_the_context_reach_the_next_question(self):
+        seen = []
+
+        def ask(provider, model, prompt, history):
+            seen.append(prompt)
+            return "r"
+
+        run_loop("openai", "m", ask, reader=Script(["uno", "/limpiar", "dos", "/salir"]),
+                 out=io.StringIO().write, context="CONTEXTO")
+        self.assertEqual(seen, ["CONTEXTO\n\nuno", "CONTEXTO\n\ndos"])
+
+    def test_without_context_the_question_is_untouched(self):
+        seen = []
+
+        def ask(provider, model, prompt, history):
+            seen.append(prompt)
+            return "r"
+
+        run_loop("openai", "m", ask, reader=Script(["uno", "/salir"]),
+                 out=io.StringIO().write)
+        self.assertEqual(seen, ["uno"])
+
+
 class ProviderHistoryTests(unittest.TestCase):
     def setUp(self):
         self.sent = {}
@@ -414,6 +473,25 @@ class CliStartTests(unittest.TestCase):
         self.assertIn("ana · equipo · openai", printed)
         self.assertIn("respuesta", printed)
         self.assertNotIn("Elige 1 o 2", printed)
+
+    def test_the_chat_receives_the_shared_memory_as_context(self):
+        self.run_main(["start"], ["1", "ana", "equipo", "openai"], ["sk-test"])
+        state = json.loads((self.home / "session.json").read_text(encoding="utf-8"))
+        store = Store(Path(self.home) / "coordinator.sqlite3")
+        store.put_memory(self.user_id(store), state["project"],
+                         "arquitectura", "un worktree por tarea", 0)
+        self.output = io.StringIO()
+        with mock.patch("cshcli.cli.providers.chat", return_value="r") as chat, \
+             mock.patch("builtins.input", side_effect=["hola", "/salir"]), \
+             mock.patch("sys.stdout", self.output):
+            main([])
+        self.assertIn("Contexto compartido del proyecto 'equipo'", chat.call_args[0][2])
+        self.assertIn("un worktree por tarea", chat.call_args[0][2])
+
+    def user_id(self, store):
+        with store._connection() as connection:
+            return connection.execute(
+                "SELECT id FROM users WHERE name = ?", ("ana",)).fetchone()["id"]
 
     def test_chat_with_a_prompt_stays_a_single_query(self):
         self.run_main(["start"], ["1", "ana", "equipo", "openai"], ["sk-test"])

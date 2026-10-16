@@ -10,7 +10,7 @@ from . import __version__, providers, updater
 from .client import Client
 from .errors import DomainError
 from .local import connect, database_path, session_root
-from .onboarding import PROVIDER_VARIABLES, Keyring, run_loop, run_wizard
+from .onboarding import PROVIDER_VARIABLES, Keyring, project_context, run_loop, run_wizard
 from .server import make_server
 from .session import Session
 
@@ -195,7 +195,17 @@ def _start(client, session, args):
     return run_wizard(client, session, _keyring())
 
 
-def _chat_loop(session, args):
+def _shared_context(client, session):
+    if not session.project:
+        return ""
+    try:
+        page = client.request("GET", f"/v1/projects/{session.project}/memory")
+    except DomainError:
+        return ""
+    return project_context(page.get("items"), session.project_name or session.project)
+
+
+def _chat_loop(client, session, args):
     provider = getattr(args, "provider", None) or session.provider
     model = getattr(args, "model", None) or session.model
     prompt = getattr(args, "prompt", None)
@@ -206,9 +216,10 @@ def _chat_loop(session, args):
         print(providers.chat(provider, model, prompt))
         return 0
     session.remember(provider=provider)
+    context = _shared_context(client, session)
     print(f"\n  {session.name} · {session.project_name} · {provider}"
-          f"    /salir para salir\n")
-    return run_loop(provider, model, providers.chat)
+          f"    /limpiar forget, /salir para salir\n")
+    return run_loop(provider, model, providers.chat, context=context)
 
 
 def _update(args):
@@ -302,7 +313,7 @@ def execute(args):
         client, closers, session = _connect(args)
     try:
         if args.command == "chat":
-            return _chat_loop(session, args)
+            return _chat_loop(client, session, args)
         if args.command == "start":
             return _start(client, session, args)
         return _dispatch(client, args)

@@ -4,7 +4,7 @@ AI CLI with personal credentials and shared project coordination. The idea: you
 create a project, invite other people, and everyone works with their own agents
 and AI accounts while sharing decisions and reserving files.
 
-**Status: local 0.5.0 pilot.** The CLI, local HTTP coordinator, SQLite, projects,
+**Status: local 0.6.0 pilot.** The CLI, local HTTP coordinator, SQLite, projects,
 invitations, versioned memory, leases, text-based AI adapters, mediated runner,
 automatic worktrees, task DAG, local integration queue, deployment coordination,
 usage and budgets are in place. The remote multi-user service and a real cloud
@@ -27,7 +27,7 @@ python scripts/cshcli.py start
 rest:
 
 ```text
-  CSHCLI 0.5.0 — coordinas agentes con tus propias cuentas
+  CSHCLI 0.6.0 — coordinas agentes con tus propias cuentas
 
   1) Sesión           Trabaja por tu cuenta
   2) Unirme o crear   Un proyecto compartido con otra persona
@@ -55,8 +55,22 @@ Once the session is ready, `cshcli` on its own opens a chat:
 
 Type a line, get an answer, type the next one. The loop carries the
 conversation: each turn sends the previous turns, capped at the last 20 so it
-cannot grow without bound. `/limpiar` clears it, `/salir`, `/quit` or Ctrl-D
+cannot grow without bound. The **first** question also carries the project's
+shared memory, so the conversation starts from what the team already decided:
+
+```text
+Contexto compartido del proyecto 'demo':
+- arquitectura: un worktree por tarea
+- estilo: PEP8
+```
+
+The block is capped at 8000 characters. `/limpiar` clears the conversation and
+lets the context reach the next question again. `/salir`, `/quit` or Ctrl-D
 leaves. A provider error is printed and the loop continues rather than exiting.
+
+The context travels as part of the first question, not as a separate system
+message, because each provider spells that differently and none of it has been
+checked against a live API.
 
 **No provider has been contacted.** The wire format per provider is covered by
 tests against the request body, not against a live API.
@@ -294,7 +308,7 @@ python -m compileall -q src tests scripts
 python scripts/cshcli.py --help
 ```
 
-The current Windows run passes 573 tests with 5 explicit skips for unavailable
+The current Windows run passes 581 tests with 5 explicit skips for unavailable
 POSIX symbolic-link/file-permission guarantees and real PostgreSQL. The tests
 use real SQLite, local HTTP, Git, and provider fixtures. The synchronised
 races pit eleven agents from two people against the same resource, memory
