@@ -137,9 +137,18 @@ worktree enlazado. Rescatados, y el segundo destapó el defecto 4.
 ## Lo único que sigue bloqueado
 
 **La firma de la release, y es una decisión del propietario, no un bloqueo de
-infraestructura.** El wheel y `SHA256SUMS` se construyen y se verifican; lo que
-falta es la identidad. Generar una clave criptográfica en nombre de alguien sin
-que lo sepa no es una decisión que se tome sola.
+infraestructura.**
+
+El mecanismo **está instalado y probado**. `minisign` 0.12, verificado contra
+la clave pública que publica el propio proyecto
+(`RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3`) **antes de
+ejecutarlo**. Se generó una clave de descarte, se firmó `SHA256SUMS`, se
+verificó y **se borró**: el camino está probado sin crear una identidad en nombre
+de nadie.
+
+Lo único que falta es que el propietario decida si genera su clave. El
+procedimiento completo está en `docs/RELEASES.md`. La clave privada es suya y no
+debe estar nunca en el repositorio ni en una copia que se sincronice.
 
 ## Dónde está el proyecto hoy
 

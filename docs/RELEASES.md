@@ -32,6 +32,33 @@ that admits it, so the script prints the omission on every run.
 
 Publishing is a manual step and stays manual while there is one owner.
 
+## Signing
+
+The mechanism is installed and proven; **the key is the owner's to create**.
+A throwaway key was generated, used to sign `SHA256SUMS`, verified, and then
+deleted — proving the path end to end without creating an identity on anyone's
+behalf.
+
+`minisign` 0.12, verified against the public key published in the project's own
+README (`RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3`) before it
+was executed. Do that verification again on every machine; it takes one
+command and it is the whole point.
+
+Once the owner decides, the procedure is:
+
+```
+minisign -G                                   # asks for a password
+minisign -S -m dist/SHA256SUMS -t "cshcli 0.9.0"
+minisign -Vm dist/SHA256SUMS -p minisign.pub
+```
+
+Publish `minisign.pub` next to the release. **Anyone can hold that file; the
+private key is the owner's**, and it should never be in the repository, in
+`.cshcli/`, or in a backup that syncs.
+
+Signing `SHA256SUMS` and not the wheel is deliberate: one signature covers
+every artefact it lists, so adding a file later does not need a new key.
+
 ## Bumping the version
 
 ```
