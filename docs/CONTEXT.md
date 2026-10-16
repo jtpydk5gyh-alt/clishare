@@ -6,11 +6,15 @@ agente pueda orientarse sin releer la conversación.
 
 ## Última tranche: el chat conoce el proyecto — 0.7.0 y 0.8.0
 
-Entró por el **PR #65**, squash `ce65531`. En la rama hubo tres commits:
-`aadf1d2` con el código, `5b948de` con la versión y la documentación, y
-`2a67ac2` cerrando el contexto.
+Dos PRs y dos squashes: **PR #65** → `ce65531` con el índice del proyecto y
+`/ver`, y **PR #67** → `0162d76` con `/buscar`. Entre ambos entró el **PR #66**
+(`69db85b`), que restauró los formularios de incidencia en formato YAML; no
+toca código del paquete y no cambió nada de lo que se describe aquí.
 
-Qué aporta, en cuatro archivos y tres sitios de cableado:
+Commits en la primera rama: `aadf1d2` con el código, `5b948de` con la versión y
+la documentación, y `2a67ac2` cerrando el contexto.
+
+Qué aporta, en cuatro archivos y cuatro sitios de cableado:
 
 - `src/cshcli/knowledge.py` es nuevo. `index_text` recorre la carpeta actual y
   devuelve los archivos que caben en 4000 caracteres, README y `docs/`, `src/`,
@@ -65,7 +69,7 @@ corren. `compileall`, el guard y la auditoría AST de docstrings (`[]`) pasan.
 ## Dónde está el proyecto hoy
 
 **Versión 0.8.0, construida localmente con checksum; no publicada ni firmada.**
-52 commits en `origin/main`, todos con noreply. La suite local actual y sus
+61 commits en `origin/main`, todos con noreply. La suite local actual y sus
 omisiones justificadas se registran abajo. CI verde en Windows y Linux × Python
 3.11, 3.12 y 3.13. Un solo ruleset, `main-integrity`, con `Personal data
 guard` como control obligatorio.
@@ -93,10 +97,10 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | --- | --- |
 | Repositorio | `jtpydk5gyh-alt/cshcli`, público, licencia MIT |
 | Versión | `0.8.0`, artefacto local con `dist/SHA256SUMS`; no publicado ni firmado |
-| Rama por defecto | `main`, 52 commits en `origin/main`, todos con la noreply de GitHub |
+| Rama por defecto | `main`, 61 commits en `origin/main`, todos con la noreply de GitHub |
 | Módulo Python | `cshcli`, 24 módulos más `__init__` y `__main__`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
-| PRs mergeadas | 58, sin `--admin`: el control obligatorio se respeta |
+| PRs mergeadas | 67, sin `--admin`: el control obligatorio se respeta |
 | Pruebas | 622 verdes; 8 omitidas: 5 por symlink, 2 por no haber PostgreSQL y 1 permiso POSIX en Windows |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
