@@ -10,14 +10,15 @@ Este bloque prevalece sobre cualquier fotografía histórica contradictoria que
 permanezca más abajo. No reinterpretar los estados antiguos como el estado
 actual.
 
-- `origin/main` está en `6c5ce92`, squash del **PR #78**. Es la versión
-  **0.9.0** y tiene **72 commits**. Los tres últimos PRs, el **#76**, el **#77**
-  y el **#78**, pasaron **14 checks** en verde cada uno y se fusionaron por
-  squash sin `--admin`.
+- `origin/main` está en `fd3bc96`, el squash del **PR #79** después de reescribir
+  los mensajes al inglés. Es la versión **0.9.0** y tiene **73 commits**. Los
+  cuatro últimos PRs, del **#76** al **#79**, pasaron **14 checks** en verde cada
+  uno y se fusionaron por squash sin `--admin`.
 - Ese SHA es el del **último squash fusionado en el momento de escribir esta
-  línea**. Envejece con la siguiente fusión: antes de fiarse de él, comprobar
-  `git log -1 --oneline` y `git rev-list --count origin/main`. Lo que no
-  envelhece es lo de abajo.
+  línea**. Envejece con la siguiente fusión, y también con un force-push: el
+  17 de octubre `main` pasó de `a5a8bb3` a `fd3bc96` sin que cambiara ni un byte
+  del contenido. Antes de fiarse de él, comprobar `git log -1 --oneline` y
+  `git rev-list --count origin/main`. Lo que no envejéce es lo de abajo.
 - La rama local está sincronizada con el remoto y el árbol está limpio. Solo hay
   un worktree registrado, el principal. No hay agentes trabajando ni otro
   worktree que rescatar.
@@ -29,8 +30,8 @@ actual.
 - La regla de cero comentarios y docstrings se cumple ya en todo el árbol:
   cero docstrings y un único comentario, el shebang de
   `scripts/push_rewritten_main.py`.
-- La última suite completa terminó con **703 pruebas verdes y 26 omitidas con
-  motivo en 422.256 s**. Las 20 pruebas que dependen de PostgreSQL también se
+- La última suite completa terminó con **707 pruebas verdes y 26 omitidas con
+  motivo en 395.694 s**. Las 20 pruebas que dependen de PostgreSQL también se
   ejecutaron contra PostgreSQL 16.2 real y pasaron. El CI del PR #76 repitió la
   suite en Windows y Linux × Python 3.11, 3.12 y 3.13: **14 checks en verde**.
 
@@ -59,6 +60,37 @@ Decisiones que no deben reabrirse al retomar: el chat permanece de solo lectura;
 `cshcli start` conserva el menú de dos ramas; `cshcli` abre el chat; el usuario
 no arranca un servidor manualmente; `web/` no se publica; y nunca se exponen ni
 se copian claves, credenciales, direcciones privadas o muestras de secretos.
+
+**Idioma, decidido por el propietario el 17 de octubre de 2026:** los mensajes
+de commit, los títulos y cuerpos de los PR y la documentación que se publica
+(`README.md`, `CHANGELOG.md`, `docs/STATUS.md`, `docs/USAGE.md`) van en
+**inglés**, que es lo que ya mayoritariamente tiene el historial. Este
+`docs/CONTEXT.md` es la única excepción y sigue en español, porque es el
+documento de trabajo del propietario.
+
+Los cuatro squashes `#76` a `#79` se fusionaron con el mensaje en español y el
+**17 de octubre de 2026 se reescribieron en inglés con un force-push**. Lo
+autorizó el propietario, se desactivaron las tres reglas que lo impiden durante
+el empujón y se restauraron acto seguido, y se usó `--force-with-lease` para que
+el push abortara si alguien hubiera subido mientras tanto. **Antes** de hacerlo
+se comprobó que el árbol del tip nuevo es byte a byte idéntico al antiguo: solo
+cambiaron los mensajes. El tip antiguo se conserva en la etiqueta
+`backup-pre-english-rewrite`. `main-integrity` quedó intacto: cuatro reglas,
+`active`, sin bypass.
+
+**Dos cosas que casi salen mal, y la lección.** Al intentar abrir la ventana del
+ruleset, un `PUT` que yo llamé "de sondeo" y que llevaba `"rules":[]` **vació las
+cuatro reglas** en lugar de solo informar de nada. Y al editar un fichero con
+`Get-Content -Raw | Set-Content -Encoding UTF8` en PowerShell 5.1, el fichero
+**sin BOM se leyó como Windows-1252 y se reescribió doble-codificado**: todas
+las tildes de este documento quedaron rotas. Lo detectó
+`test_every_target_still_matches_exactly_once`, que es exactamente para lo que
+existe, y se restauró desde Git.
+
+La lección, escrita porque volverá a tentarme: **en este repositorio, una
+llamada que "solo comprueba" es una escritura, y una edición hecha con la shell
+puede corromper el fichero sin avisar**. Para ficheros con acentos se usa la
+herramienta de edición y se verifica con los puntos de código, no a ojo.
 
 ## Última tranche: el chat conoce el proyecto — 0.7.0 y 0.8.0
 
@@ -331,7 +363,7 @@ que se sincronice. El procedimiento está en `docs/RELEASES.md`.
 ## Dónde está el proyecto hoy
 
 **Versión 0.9.0, construida localmente con checksum; no publicada ni firmada.**
-72 commits en `origin/main`, todos con noreply. La suite local actual y sus
+73 commits en `origin/main`, todos con noreply. La suite local actual y sus
 omisiones justificadas se registran abajo. CI verde en Windows y Linux × Python
 3.11, 3.12 y 3.13. Un solo ruleset, `main-integrity`, con `Personal data
 guard` como control obligatorio.
@@ -341,7 +373,7 @@ guard` como control obligatorio.
 | Hito | Qué aporta |
 | --- | --- |
 | 6C | `Runner` que medie cada escritura y no expone ejecución de comandos |
-| 7 | `Identity` con sesiones revocables; `RemoteStore`, migración y operaciones. **Sin servidor levantado** |
+| 7 | `Identity` con sesiones revocables; `RemoteStore`, migración y operaciones. **Servidor levantado y probado contra PostgreSQL 16.2 real** |
 | 8A | Puerta de publicación: fences, generación, propiedad, caducidad, SHA |
 | 8B | `TaskService` con `claim` atómico e `IntegrationQueue` con compare-and-swap |
 | 9 | Despliegues con idempotencia y rollback; **cerrado** con las cuatro comprobaciones contra un proceso real |
@@ -359,11 +391,11 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | --- | --- |
 | Repositorio | `jtpydk5gyh-alt/cshcli`, público, licencia MIT |
 | Versión | `0.9.0`, artefacto local con `dist/SHA256SUMS`; no publicado ni firmado |
-| Rama por defecto | `main`, 72 commits en `origin/main`, todos con la noreply de GitHub |
+| Rama por defecto | `main`, 73 commits en `origin/main`, todos con la noreply de GitHub |
 | Módulo Python | `cshcli`, 24 módulos más `__init__` y `__main__`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 78, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 703 verdes; 26 omitidas con motivo: 20 necesitan `CSHCLI_REMOTE_DSN` y **se ejecutaron** contra PostgreSQL 16.2 |
+| Pruebas | 707 verdes; 26 omitidas con motivo: 20 necesitan `CSHCLI_REMOTE_DSN` y **se ejecutaron** contra PostgreSQL 16.2 |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
@@ -481,7 +513,7 @@ escritura sobre la misma base, porque eso produce `database is locked`.
 | 6A Contexto, política, broker | Completo: `context.py`, `policy.py`, `broker.py`, capacidades |
 | 6B Worktree aislado | Completo: rutas, symlinks y junctions rechazados |
 | 6C Herramientas mediadas y sandbox | **Completo.** `Runner` con escrituras mediadas, validación de lease inmediata y heartbeat. **No es un contenedor**: sin límites de CPU, memoria, procesos ni red |
-| 7 Servicio remoto y PostgreSQL | **Parcial y declarado.** Driver como extra, `RemoteStore` con bloqueo de fila, migración, compose y OPERATIONS.md. El store se niega a servir mientras diga `unverified`. **Falta levantarlo**: no hay servidor, ni Docker, ni WSL, ni PostgreSQL |
+| 7 Servicio remoto y PostgreSQL | **Hecho y probado en una máquina.** Driver como extra, `RemoteStore` con bloqueo de fila, migración, compose, OPERATIONS.md, PostgreSQL 16.2 real, TLS y restore. El store se niega a servir mientras diga `unverified`, y sigue diciéndolo porque el criterio son once *máquinas* |
 | 8A Puerta de publicación | Completo: fences, generación, propiedad, caducidad, SHA, Git |
 | 8B DAG y cola de integración | **Completo.** `TaskService` con estados y `claim` atómico, más `IntegrationQueue` con checkout dedicado y avance condicional |
 | 9 Despliegues con rollback | **Cerrado.** Las cuatro comprobaciones de aceptación se ejecutan contra un proceso separado y un socket HTTP real. **Sin proveedor configurado**: nada se ha publicado |
@@ -492,13 +524,20 @@ escritura sobre la misma base, porque eso produce `database is locked`.
 
 | Pendiente | ¿Se puede hacer en esta máquina? |
 | --- | --- |
-| Paso 1 del plan: `cshcli start` y almacén local de claves | **Sí** |
-| Paso 2: documentar el comando de instalación | **Sí** |
-| Paso 3: `cshcli update` con checksum | **Sí** |
-| Paso 4: `cshcli serve --remote` con HTTPS y PostgreSQL | **No.** Sin servidor |
-| 7: levantar el coordinador remoto y probar concurrencia real | **No.** Sin PostgreSQL |
-| 11: ensayos de caos y restore probada | **Parcial.** El caos local sí; el restore sobre una base real, no |
-| 11: firma de release | **No.** Sin credenciales |
+| Paso 1 del plan: `cshcli start` y almacén local de claves | **Hecho.** Menú de dos opciones, coordinador implícito |
+| Paso 2: documentar el comando de instalación | **Hecho**, con sus tres advertencias |
+| Paso 3: `cshcli update` con checksum | **Hecho** con dobles de red; nunca contra una release publicada |
+| Paso 4: `cshcli serve --remote` con HTTPS y PostgreSQL | **Hecho.** TLS contra PostgreSQL 16.2 real; certificado autofirmado |
+| 7: levantar el coordinador remoto y probar concurrencia real | **Hecho en una máquina.** Once procesos y un ganador; once *máquinas* siguen sin poder probarse |
+| 11: ensayos de caos y restore probada | **Hechos.** `pg_dump`/`pg_restore` sobre base vacía; restaurar sobre base poblada se rechaza |
+| 11: firma de release | **No.** Sin credenciales, y es decisión del propietario |
+
+Esta tabla se escribió cuando no había PostgreSQL en la máquina y **era cierta
+entonces**. El tramo de infraestructura real la dejó obsoleta: lo que decía
+"sin servidor" y "sin PostgreSQL" se resolvió después con `pgserver` y
+PostgreSQL 16.2 de verdad. Se corrige aquí para que no vuelva a mentir; los
+detalles y la evidencia de cada fila están más arriba, en *Tranche:
+infraestructura real*, y en `docs/STATUS.md`.
 
 La regla que se viene aplicando: **lo que no se puede comprobar se declara, no
 se maquilla.** Cada fila de esta tabla está también en `docs/STATUS.md`, y las
@@ -519,9 +558,9 @@ Decisiones del propietario, 15 de octubre, en el orden en que se tomaron:
    implícito. Publicar y firmar siguen pendientes.
 
 Lo que queda, en orden y con su bloqueo declarado, está en la tabla de arriba.
-Lo único que **no** se puede cerrar aquí es el almacenamiento PostgreSQL y el
-despliegue HTTPS: no hay Docker, ni WSL, ni PostgreSQL en esta máquina, ni
-credenciales para firmar una release.
+Lo único que **no** se puede cerrar aquí es la **firma de la release**: el
+almacenamiento PostgreSQL y el despliegue HTTPS ya están hechos y probados
+contra una base real.
 
 ## Gobernanza: quién puede commitear y fusionar
 
@@ -638,10 +677,17 @@ es explícito: contra un PostgreSQL real, lanzar once procesos independientes
 sobre `file:src` y `file:src/a.py` y exigir un único ganador, *sin sustituir
 esa prueba por un mock*. También pide HTTPS con la base en red privada, límites
 de peticiones, copias automáticas y **una restauración probada sobre una base
-vacía** antes de invitar a nadie. No hay PostgreSQL en esta máquina, y la
-regla del proyecto es no añadir dependencias de runtime durante el piloto: un
-driver de PostgreSQL sería la primera. Se deja escrito como pendiente en vez
-de entregar una versión que solo funciona con SQLite y diga que cumple.
+vacía** antes de invitar a nadie. Cuando se escribió esto no había PostgreSQL
+en esta máquina, y la regla del proyecto es no añadir dependencias de runtime
+durante el piloto: un driver de PostgreSQL sería la primera. Se deja escrito
+como pendiente en vez de entregar una versión que solo funciona con SQLite y
+diga que cumple.
+
+**Resuelto después, el 16 de octubre**, en el tramo de infraestructura real:
+PostgreSQL 16.2 real, migración aplicada, once compitiendo por una sola
+lease, `serve --remote` por TLS y `pg_restore` probado. El argumento de no
+entregar una versión que solo funcionaba con SQLite sigue siendo valido como
+criterio; lo que ya no vale es la premisa de que no había base de datos.
 
 ### La solución al 7: que el código no pueda sobreprometer
 
@@ -668,8 +714,10 @@ independientes compitiendo por `file:src` y `file:src/a.py` contra un
 PostgreSQL real, exigiendo un único ganador. El plan prohíbe sustituirlo por un
 mock, porque un mock no prueba nada sobre `SELECT ... FOR UPDATE`. Borrarlo
 sería justamente lo que el plan prohíbe; se deja, con su motivo en el mensaje
-de salto. En esta máquina no hay Docker, Podman, WSL ni PostgreSQL: está
-comprobado, no supuesto.
+de salto. Cuando se escribió esto, en esta máquina no había Docker, Podman, WSL
+ni PostgreSQL: estaba comprobado, no supuesto. **El 16 de octubre dejó de ser
+cierto** el mismo día que `pgserver` trajo PostgreSQL 16.2 y la prueba se
+ejecutó de verdad.
 
 La migración lleva los dos detalles que no son portables y que no conviene
 "simplificar": el fence sale de una **secuencia**, nunca de un contador por
@@ -886,7 +934,9 @@ que no está versionada, para que quien lo lea lo sepa antes de decidir.
 **No descarga de ninguna rama que no sea `main`**, y no puede convertir un
 artefacto sin verificar en algo instalado.
 
-El paso 4, `cshcli serve --remote`, sigue bloqueado sin servidor.
+El paso 4, `cshcli serve --remote`, **está cerrado**: sirve por TLS contra un
+PostgreSQL real y rechaza el HTTP plano. Lo que sigue sin poder probarse es una
+segunda máquina.
 
 ## 11: ensayos de caos locales, y lo que sigue sin poder probarse
 
