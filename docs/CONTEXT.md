@@ -39,7 +39,7 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | Módulo Python | `cshcli`, 21 módulos, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 58, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 537 verdes; 5 omitidas: 2 por symlink, 2 por no haber PostgreSQL y 1 permiso POSIX en Windows |
+| Pruebas | 541 verdes; 5 omitidas: 2 por symlink, 2 por no haber PostgreSQL y 1 permiso POSIX en Windows |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
@@ -865,6 +865,29 @@ done | sort -u                                              # una sola línea
 git fsck --no-reflogs                                       # sin salida
 ```
 
+## La cola exige aceptación previa
+
+El hueco que había quedado abierto después de 0.4.0 está cerrado. La cola de
+integración aceptaba **cualquier commit del repositorio**: la puerta
+`IntegrationGate` validaba generación de autorización, fences y recursos, pero
+nadie exigía haber pasado por ella.
+
+Ahora `IntegrationQueue` consulta `accepted_patches` en dos momentos:
+
+- al **encolar**: sin registro para `(proyecto, commit)` devuelve
+  `409 patch_not_accepted`, y con una base distinta de la aceptada,
+  `409 patch_base_mismatch`;
+- justo antes de **integrar**: si el registro desapareció mientras la entrada
+  esperaba, se rechaza y la rama no se mueve.
+
+La consecuencia es que la puerta es la autoridad de publicación y la cola solo
+transporta. Eso obliga a que los tests de la cola pasen por
+`accept_patch` con sus leases, lo cual es lo que hace que la puerta sea real y
+no decorativa: los tests HTTP devuelven 409 sin registro.
+
+No es una regresión de 0.4.0 —la cola local nunca lo hizo—, es un hueco que
+existía desde el diseño original y que la exposición HTTP volvió alcanzable.
+
 ## Menú de inicio y coordinador implícito
 
 `cshcli start` era un impresor: decía qué comando tocar a continuación y quien
@@ -948,14 +971,9 @@ antes de actualizar" era inalcanzable y la carrera escapaba como error interno
 en vez de un `review`. Corregido con `check=False` y una prueba que mueve la
 rama justo antes de la actualización.
 
-La otra observación del revisor sigue **abierta y declarada**: la ruta HTTP de
-la cola integra commits que pueden no haber pasado por
-`IntegrationGate.accept_patch`. La puerta existe y valida generación, fences y
-recursos, pero la cola no la exige todavía. No es una regresión de este cambio
-—la cola local nunca la hectaresobrido— y cerrar el hueco exige decidir si la
-cola debe exigir una aceptación previa o si la puerta pasa a ser el único punto
-de entrada. Queda como trabajo pendiente explícito.
+La otra observación del revisor **queda cerrada**: la puerta de aceptación es
+ahora obligatoria para la cola, con comprobación al encolar y antes de integrar.
 
 Cierre reproducible de esta tanda: las 13 pruebas HTTP de la cola pasan; la
-suite completa pasa con **537 tests en 337.217 s** y 5 omisiones justificadas.
+suite completa pasa con **541 tests en 296.210 s** y 5 omisiones justificadas.
 `compileall` sobre `src`, `tests` y `scripts` termina sin salida.

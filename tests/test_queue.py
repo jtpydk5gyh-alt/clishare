@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from cshcli.errors import DomainError
+from cshcli.integration import IntegrationGate
 from cshcli.queue import FAILED, MERGED, QUEUED, REVIEW, IntegrationQueue, _Checkout
 from cshcli.store import Store
 
@@ -31,7 +32,24 @@ class QueueTests(unittest.TestCase):
         self.store = Store(self.root / "coordinator.sqlite3")
         self.ana = self.store.register_user("ana")
         self.project = self.store.create_project(self.ana["id"], "demo")
+        self.gate = IntegrationGate(self.store)
         self.queue = IntegrationQueue(self.store, self.repository, checks=self.checks_pass)
+        self.runs = 0
+
+    def accept(self, commit_sha, base_sha=None, resources=None):
+        self.runs += 1
+        touched = resources or ["file:app.py", "file:test_app.py"]
+        held = self.store.acquire_leases(self.ana["id"], self.project["id"],
+                                         f"agent-{self.runs}", touched, ttl=3600)
+        self.gate.accept_patch(self.ana["id"], self.project["id"],
+                               f"run-{self.runs}",
+                               self.store.authorization_generation(
+                                   self.ana["id"], self.project["id"]),
+                               {item["resource"]: item["fence"] for item in held},
+                               base_sha or self.base, commit_sha, touched)
+        for lease in held:
+            self.store.release_lease(self.ana["id"], self.project["id"],
+                                     lease["id"], lease["fence"])
 
     def git(self, *arguments):
         return subprocess.run(["git", *arguments], cwd=self.repository, check=True,
@@ -65,12 +83,41 @@ class QueueTests(unittest.TestCase):
     def branch_content(self, name):
         return self.git("show", f"integration:{name}")
 
-    def submit(self, commit_sha, base=None):
-        return self.queue.submit(self.project["id"], commit_sha, base or self.base)
+    def submit(self, commit_sha, base=None, resources=None):
+        base = base or self.base
+        self.accept(commit_sha, base, resources)
+        return self.queue.submit(self.project["id"], commit_sha, base)
 
     def test_an_empty_queue_says_so(self):
         result = self.queue.process_next(self.project["id"])
         self.assertEqual(result["state"], "idle")
+
+    def test_a_commit_that_no_gate_accepted_is_refused(self):
+        sha = self.worktree("app.py", "def total(items):\n    return 5\n", "fix")
+        with self.assertRaises(DomainError) as caught:
+            self.queue.submit(self.project["id"], sha, self.base)
+        self.assertEqual(caught.exception.code, "patch_not_accepted")
+        self.assertEqual(self.queue.list(self.project["id"]), [])
+
+    def test_a_patch_accepted_with_another_base_is_refused(self):
+        sha = self.worktree("app.py", "def total(items):\n    return 6\n", "fix")
+        other = self.commit("app.py", "def total(items):\n    return 4\n", "other")
+        self.accept(sha, self.base)
+        with self.assertRaises(DomainError) as caught:
+            self.queue.submit(self.project["id"], sha, other)
+        self.assertEqual(caught.exception.code, "patch_base_mismatch")
+
+    def test_an_acceptance_that_disappears_before_merging_is_refused(self):
+        sha = self.worktree("app.py", "def total(items):\n    return 8\n", "fix")
+        self.submit(sha)
+        with self.store._connection(write=True) as connection:
+            connection.execute(
+                "DELETE FROM accepted_patches WHERE project_id = ? AND commit_sha = ?",
+                (self.project["id"], sha))
+        with self.assertRaises(DomainError) as caught:
+            self.queue.process_next(self.project["id"])
+        self.assertEqual(caught.exception.code, "patch_not_accepted")
+        self.assertEqual(self.branch_sha(), self.base, "the branch must not move")
 
     def test_a_submission_requires_a_real_commit(self):
         with self.assertRaises(DomainError) as caught:

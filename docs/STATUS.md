@@ -46,7 +46,7 @@ says so and the reason is in [OPERATIONS.md](OPERATIONS.md),
 | Remote store (7) | PostgreSQL schema, row-locked acquisition and a refusal to serve while unverified. **No server has been run**; the concurrency test skips with its reason |
 | Built web | **Not published**, by decision of the owner. Ignored by git with the reason written next to it |
 | Task DAG (8B) | `TaskService` with seven states, cycle refusal on create and modify, and `claim` that acquires leases in the same transaction |
-| Integration queue (8B) | Serialised per project, dedicated worktree, recomputed base, configured checks on the composed result, and a compare-and-swap that only advances the branch if it did not move. Local HTTP routes expose submit, list, read and process; processing refuses to run without configured checks |
+| Integration queue (8B) | Serialised per project, dedicated worktree, recomputed base, configured checks on the composed result, and a compare-and-swap that only advances the branch if it did not move. Local HTTP routes expose submit, list, read and process; processing refuses to run without configured checks, and only a patch the publication gate accepted can be queued |
 | Branch governance | Ruleset `main-integrity`: no force-push, no deletion, no direct updates, and `Personal data guard` required to merge |
 
 ## Local evidence
@@ -55,7 +55,7 @@ Observed environment: Windows with CPython 3.12.14. The interpreter path is
 machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests`
-returned **537 passing tests in 337.217 seconds**, with 5 skipped: two symbolic
+returned **541 passing tests in 296.210 seconds**, with 5 skipped: two symbolic
 link cases on a host that does not grant the privilege, two PostgreSQL cases
 that need a real server which does not exist on this machine, and one POSIX file
 permission case that does not apply on Windows. The Windows junction case runs.
@@ -150,6 +150,6 @@ cannot be trusted to still guard.
 | Standing the remote coordinator up and proving real concurrency | **No.** No PostgreSQL |
 | Chaos drills and a proven restore | Partly. Local chaos drills and a real SQLite restore pass; PostgreSQL restore does not |
 | Signing and publishing the release | **No.** No credentials |
-| Requiring a queue entry to come from an accepted patch | **Not done.** The HTTP queue can merge a commit that never passed `IntegrationGate`; a known open gap |
+| Requiring a queue entry to come from an accepted patch | Done. The queue refuses a commit with no accepted-patch record and one accepted with a different base, and rechecks acceptance immediately before the merge |
 
 Each of these is a row above with its evidence, not a promise.

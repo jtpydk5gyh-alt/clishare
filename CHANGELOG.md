@@ -13,6 +13,12 @@ The first run was eight commands across two terminals, and `start` only printed
 what to run next. It is now one command that does the work.
 
 ### Security
+- The integration queue now **requires a prior accepted-patch record**. A commit
+  the publication gate never accepted is refused with `409 patch_not_accepted`,
+  and one accepted with a different base with `409 patch_base_mismatch`.
+  Acceptance is rechecked immediately before the merge, so a record withdrawn
+  while the entry waited is refused instead of merged. Previously the HTTP queue
+  could merge any commit in the repository.
 - The personal data guard now reads the **staged index** instead of the working
   tree. `committed_text` built the git spec as `f"{revision}:{name}"`, which for
   the index revision produces `::name`; git rejects that, and the guard silently
@@ -90,7 +96,7 @@ what to run next. It is now one command that does the work.
   ever prints a key, and a test checks that asking about one provider does not
   reveal another's.
 - Recorded where the project actually stands: version 0.3.0, 52 commits on
-  `origin/main`, 537 passing tests, and a table that says for each remaining
+  `origin/main`, 541 passing tests, and a table that says for each remaining
   item whether it can be done on this machine. The document states what cannot
   be checked instead of implying it.
 - `docs/STATUS.md` gained a "What is verified, and what is not" heading, a
@@ -240,7 +246,7 @@ what to run next. It is now one command that does the work.
   leaving `main` with a red suite.
 
 ### Verification
-- **537 tests pass**, with 5 explicit skips: two symbolic-link cases, two real
+- **541 tests pass**, with 5 explicit skips: two symbolic-link cases, two real
   PostgreSQL cases, and one POSIX permission case on Windows.
 - **CI is active** and green on Windows and Linux with Python 3.11, 3.12 and
   3.13.
