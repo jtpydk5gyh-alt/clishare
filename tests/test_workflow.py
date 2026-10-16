@@ -6,9 +6,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 
-# Major versions that run on a runtime GitHub has retired. Node 20 reached end
-# of life in April 2026 and GitHub removed it in the summer of 2026, forcing
-# every job to warn until the workflow itself moves.
 RETIRED = {
     "actions/checkout": {"1", "2", "3", "4"},
     "actions/setup-python": {"1", "2", "3", "4", "5"},
