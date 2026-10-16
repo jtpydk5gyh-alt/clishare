@@ -331,7 +331,7 @@ python scripts/cshcli.py --help
 python scripts/guard_secrets.py --all
 ```
 
-The current Windows run passes 558 tests with 5 explicit skips for unavailable
+The current Windows run passes 573 tests with 5 explicit skips for unavailable
 POSIX symbolic-link/file-permission guarantees and real PostgreSQL. The tests
 use real SQLite, local HTTP, Git, and provider fixtures. The synchronised
 races pit eleven agents from two people against the same resource, memory

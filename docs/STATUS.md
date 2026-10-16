@@ -56,7 +56,7 @@ Observed environment: Windows with CPython 3.12.14. The interpreter path is
 machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests`
-returned **558 passing tests in 339.138 seconds**, with 5 skipped: two symbolic
+returned **573 passing tests in 312.769 seconds**, with 5 skipped: two symbolic
 link cases on a host that does not grant the privilege, two PostgreSQL cases
 that need a real server which does not exist on this machine, and one POSIX file
 permission case that does not apply on Windows. The Windows junction case runs.

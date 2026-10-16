@@ -32,6 +32,28 @@ that admits it, so the script prints the omission on every run.
 
 Publishing is a manual step and stays manual while there is one owner.
 
+## Bumping the version
+
+```
+python scripts/bump_version.py 0.6.0
+```
+
+It rewrites the version in `src/cshcli/__init__.py`, `pyproject.toml`,
+`README.md`, `docs/STATUS.md`, `docs/USAGE.md` and `docs/CONTEXT.md`, and it
+refuses rather than guessing:
+
+- a version that is not three numeric parts;
+- a version that does not move forward from the current one;
+- **any file where its sentence no longer matches exactly once.** If the wording
+  in those documents is ever rewritten, the script stops instead of editing a
+  document it no longer understands.
+
+`tests/test_bump_version.py` holds that last property in place: it asserts that
+every target still matches exactly once in the real repository, so a reworded
+document fails a test rather than failing silently at release time.
+
+Still manual afterwards: the `CHANGELOG.md` entry, the `git tag`, and the commit.
+
 ## The release history
 
 ### 0.4.0 — 16 October 2026

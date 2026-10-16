@@ -39,7 +39,7 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | Módulo Python | `cshcli`, 21 módulos, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 58, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 558 verdes; 5 omitidas: 2 por symlink, 2 por no haber PostgreSQL y 1 permiso POSIX en Windows |
+| Pruebas | 573 verdes; 5 omitidas: 2 por symlink, 2 por no haber PostgreSQL y 1 permiso POSIX en Windows |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
@@ -869,6 +869,22 @@ done | sort -u                                              # una sola línea
 git fsck --no-reflogs                                       # sin salida
 ```
 
+## El helper de versión, probado y subido
+
+`scripts/bump_version.py` llevaba tiempo sin trackear porque reescribe
+archivos de todo el repositorio y no tenía pruebas. Escribirlas lo convirtió en
+algo que sí se puede subir.
+
+La prueba que importa no es la del sandbox: es
+`test_every_target_still_matches_exactly_once`, que afirma que **cada patrón
+sigue dependiendo exactamente una vez en los archivos reales**. Si alguien
+reescribe la frase de versión en `README` o `STATUS`, el test falla en la suite
+en vez de que el script se niegue a las tres de la mañana. Esa negativa era ya
+la propiedad del script; ahora hay algo que la vigila.
+
+Con eso, la regla del propietario —versionar después de un cambio grande— tiene
+herramienta, prueba y procedimiento escrito en `docs/RELEASES.md`.
+
 ## El bucle recuerda la conversación
 
 El bucle de 0.5.0 mandaba cada línea como una consulta suelta. Ahora acumula los
@@ -1026,5 +1042,5 @@ La otra observación del revisor **queda cerrada**: la puerta de aceptación es
 ahora obligatoria para la cola, con comprobación al encolar y antes de integrar.
 
 Cierre reproducible de esta tanda: las 13 pruebas HTTP de la cola pasan; la
-suite completa pasa con **558 tests en 339.138 s** y 5 omisiones justificadas.
+suite completa pasa con **573 tests en 312.769 s** y 5 omisiones justificadas.
 `compileall` sobre `src`, `tests` y `scripts` termina sin salida.
