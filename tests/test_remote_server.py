@@ -9,14 +9,25 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from cshcli.remote_server import RemoteCoordinator, make_remote_server
-from cshcli.server import Handler
+from cshcli.remote_server import make_remote_server
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "scripts"))
 import tls_certificate
 
 DSN = os.environ.get("CSHCLI_REMOTE_DSN", "")
 SKIP_REASON = "requires a real PostgreSQL and TLS: set CSHCLI_REMOTE_DSN"
+CRYPTOGRAPHY_REASON = (
+    "requires cryptography: pip install cryptography. Without it a certificate "
+    "cannot be made, and a test that cannot run must say so rather than fail."
+)
+
+
+def _has_cryptography() -> bool:
+    try:
+        import cryptography  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 def _get(url, context=None, timeout=20):
@@ -27,6 +38,8 @@ def _get(url, context=None, timeout=20):
 
 class CertificateTests(unittest.TestCase):
     def setUp(self):
+        if not _has_cryptography():
+            self.skipTest(CRYPTOGRAPHY_REASON)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
 
