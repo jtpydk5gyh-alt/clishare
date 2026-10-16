@@ -6,7 +6,7 @@ agente pueda orientarse sin releer la conversación.
 
 ## Dónde está el proyecto hoy
 
-**Versión 0.5.0, construida localmente con checksum; no publicada ni firmada.**
+**Versión 0.6.0, construida localmente con checksum; no publicada ni firmada.**
 52 commits en `origin/main`, todos con noreply. La suite local actual y sus
 omisiones justificadas se registran abajo. CI verde en Windows y Linux × Python
 3.11, 3.12 y 3.13. Un solo ruleset, `main-integrity`, con `Personal data
@@ -34,12 +34,12 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | Dato | Valor |
 | --- | --- |
 | Repositorio | `jtpydk5gyh-alt/cshcli`, público, licencia MIT |
-| Versión | `0.5.0`, artefacto local con `dist/SHA256SUMS`; no publicado ni firmado |
+| Versión | `0.6.0`, artefacto local con `dist/SHA256SUMS`; no publicado ni firmado |
 | Rama por defecto | `main`, 52 commits en `origin/main`, todos con la noreply de GitHub |
 | Módulo Python | `cshcli`, 21 módulos, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 58, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 573 verdes; 5 omitidas: 2 por symlink, 2 por no haber PostgreSQL y 1 permiso POSIX en Windows |
+| Pruebas | 581 verdes; 5 omitidas: 2 por symlink, 2 por no haber PostgreSQL y 1 permiso POSIX en Windows |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
@@ -179,7 +179,7 @@ Decisiones del propietario, 15 de octubre, en el orden en que se tomaron:
 2. Después, la cola del 8B, el 10 y el 11. **Los tres hechos.**
 3. Un plan escrito **antes** de tocar código, para online, simplicidad y
    actualización automática. **Escrito** en `docs/PLAN-ONLINE.md`.
-4. Versionar después de un cambio grande. **Hecho**: `0.3.0` con checksum y la
+4. Versionar después de un cambio grande. **Hecho**: `0.6.0` con checksum y la
    copia instalada verificada, y `0.4.0` tras el menú y el coordinador
    implícito. Publicar y firmar siguen pendientes.
 
@@ -869,6 +869,24 @@ done | sort -u                                              # una sola línea
 git fsck --no-reflogs                                       # sin salida
 ```
 
+## El chat ve el proyecto
+
+La conversación venía de contexto vacío: el chatignoraba la memoria
+versionada que el proyecto ya tenía guardada. Ahora la **primera** pregunta
+lleva un bloque con las entradas de memoria del proyecto, acotado a 8000
+caracteres.
+
+El bloque viaja **dentro de la primera pregunta de usuario**, no como un
+mensaje de sistema aparte. Cada proveedor lo escribe de forma distinta —
+`instructions`, `system`, `systemInstruction`, `system`— y ninguna de esas
+formas se ha comprobado contra una API real. Meter cuatro formas no
+verificadas para ahorrar un delimitador habría sido añadir superficie no
+verificada a cambio de nada.
+
+Una prueba encontró un bug real durante esto: una entrada con **clave vacía**
+pasaba el filtro y producía una línea `- : contenido` malformada. El filtro
+comprobaba el contenido pero no la clave.
+
 ## El helper de versión, probado y subido
 
 `scripts/bump_version.py` llevaba tiempo sin trackear porque reescribe
@@ -1042,5 +1060,5 @@ La otra observación del revisor **queda cerrada**: la puerta de aceptación es
 ahora obligatoria para la cola, con comprobación al encolar y antes de integrar.
 
 Cierre reproducible de esta tanda: las 13 pruebas HTTP de la cola pasan; la
-suite completa pasa con **573 tests en 312.769 s** y 5 omisiones justificadas.
+suite completa pasa con **581 tests en 315.431 s** y 5 omisiones justificadas.
 `compileall` sobre `src`, `tests` y `scripts` termina sin salida.

@@ -192,10 +192,25 @@ def _provider_setup(session, keyring, reader, secret, out):
     session.remember(provider=provider)
 
 
-def run_loop(provider, model, ask, reader=None, out=None, keep=20):
+def project_context(entries, name, limit=8000):
+    lines = [f"Contexto compartido del proyecto '{name}':"]
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        key, content = entry.get("key"), entry.get("content")
+        if isinstance(key, str) and key.strip() and isinstance(content, str) and content.strip():
+            lines.append(f"- {key.strip()}: {content.strip()}")
+    if len(lines) == 1:
+        return ""
+    text = "\n".join(lines)
+    return text[:limit]
+
+
+def run_loop(provider, model, ask, reader=None, out=None, keep=20, context=None):
     reader = reader or input
     out = out or print
     history = []
+    sent = 0
     while True:
         try:
             line = reader("> ")
@@ -209,15 +224,18 @@ def run_loop(provider, model, ask, reader=None, out=None, keep=20):
             return 0
         if line in {"/clear", "/limpiar"}:
             history.clear()
+            sent = 0
             out("  Conversación borrada.")
             continue
+        prompt = f"{context}\n\n{line}" if context and not sent else line
         try:
-            answer = ask(provider, model, line, list(history))
+            answer = ask(provider, model, prompt, list(history))
         except DomainError as error:
             out(f"[{error.code}] {error}")
             continue
         out(answer)
-        history.append({"role": "user", "content": line})
+        sent += 1
+        history.append({"role": "user", "content": prompt})
         history.append({"role": "assistant", "content": answer})
         if keep and len(history) > keep:
             del history[:-keep]

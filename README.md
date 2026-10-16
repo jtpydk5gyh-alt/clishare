@@ -27,7 +27,7 @@ and AI accounts while sharing decisions and reserving files.
 
 ## Status
 
-**Local pilot, version 0.5.0.** The coordinator, the CLI, the coordination
+**Local pilot, version 0.6.0.** The coordinator, the CLI, the coordination
 store and the publication gate are implemented and covered by tests that run on
 Linux and Windows with Python 3.11, 3.12 and 3.13.
 
@@ -71,7 +71,7 @@ python scripts/cshcli.py start
 ```
 
 ```text
-  CSHCLI 0.5.0 — coordinas agentes con tus propias cuentas
+  CSHCLI 0.6.0 — coordinas agentes con tus propias cuentas
 
   1) Sesión           Trabaja por tu cuenta
   2) Unirme o crear   Un proyecto compartido con otra persona
@@ -95,11 +95,13 @@ token — and `cshcli` on its own opens a chat:
 ```
 
 `/limpiar` clears the conversation, `/salir`, `/quit` or Ctrl-D leaves. Each
-turn carries the previous ones, capped at the last 20. `cshcli chat --provider
-openai --model gpt-4o-mini "one question"` stays a single query. The model
-identifier is explicit for API providers on purpose: the tool does not guess
-one. **No provider has been contacted**: the request body per provider is
-covered by tests, not by a live API.
+turn carries the previous ones, capped at the last 20, and the first question
+also carries the project's shared memory so the conversation starts from what
+the team already decided. `cshcli chat --provider openai --model gpt-4o-mini
+"one question"` stays a single query. The model identifier is explicit for API
+providers on purpose: the tool does not guess one. **No provider has been
+contacted**: the request body per provider is covered by tests, not by a live
+API.
 
 Every decision lives in `.cshcli/coordinator.sqlite3`, so the coordinator that
 made it does not need to keep running. That folder is ignored by Git. The pilot
@@ -331,7 +333,7 @@ python scripts/cshcli.py --help
 python scripts/guard_secrets.py --all
 ```
 
-The current Windows run passes 573 tests with 5 explicit skips for unavailable
+The current Windows run passes 581 tests with 5 explicit skips for unavailable
 POSIX symbolic-link/file-permission guarantees and real PostgreSQL. The tests
 use real SQLite, local HTTP, Git, and provider fixtures. The synchronised
 races pit eleven agents from two people against the same resource, memory
