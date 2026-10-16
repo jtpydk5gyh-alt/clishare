@@ -252,7 +252,7 @@ class GuardTests(unittest.TestCase):
 
         def capture(command, **keywords):
             built.append(command)
-            return type("R", (), {"stdout": "", "returncode": 0})()
+            return type("R", (), {"stdout": b"", "returncode": 0})()
 
         with mock.patch.object(guard.subprocess, "run", side_effect=capture):
             guard.committed_text("doc.md", ":")
@@ -339,6 +339,68 @@ class IgnoredSecretFilesTests(unittest.TestCase):
         for name in ("src/cshcli/cli.py", "docs/STATUS.md", "README.md"):
             with self.subTest(name=name):
                 self.assertFalse(self.ignored(name))
+
+
+class HardPathAndBinaryTests(unittest.TestCase):
+    TOKEN = "ghp_" + "K" * 36
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / "repo"
+        self.root.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=self.root, check=True,
+                       capture_output=True)
+        subprocess.run(["git", "config", "user.email", guard.ALLOWED_EMAIL],
+                       cwd=self.root, check=True, capture_output=True)
+
+    def g(self, *command):
+        return subprocess.run(list(command), cwd=self.root, capture_output=True,
+                              text=True, encoding="utf-8", errors="replace")
+
+    def stage(self, name, content):
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(content, bytes):
+            path.write_bytes(content)
+        else:
+            path.write_text(content, encoding="utf-8")
+        self.g("git", "add", "--", name)
+        return path
+
+    def scan(self, *arguments):
+        return subprocess.run([sys.executable, str(SCRIPT), *arguments],
+                              cwd=self.root, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
+
+    def test_indexed_content_is_scanned_after_the_file_is_deleted(self):
+        self.stage("removed.txt", self.TOKEN).unlink()
+        self.assertEqual(self.scan().returncode, 1,
+                         "el guard leyo el disco en vez del indice")
+
+    def test_spaces_unicode_and_a_leading_hyphen_do_not_hide_a_secret(self):
+        for name in (" space name.txt", "caf\u00e9.txt", "-leading.txt"):
+            with self.subTest(name=name):
+                self.stage(name, self.TOKEN)
+                result = self.scan("--staged", "--", name)
+                self.assertEqual(result.returncode, 1, result.stderr)
+        every = self.scan()
+        self.assertEqual(every.returncode, 1, every.stderr)
+        self.assertIn("caf\u00e9.txt", every.stdout)
+
+    def test_a_secret_hides_behind_no_extension_and_behind_a_container(self):
+        for name, payload in (("payload.whl", b"\xff\x00" + self.TOKEN.encode()),
+                              ("payload.sqlite3", self.TOKEN.encode()),
+                              ("sin-extension", self.TOKEN.encode())):
+            with self.subTest(name=name):
+                self.stage(name, payload)
+                self.assertEqual(self.scan("--staged", name).returncode, 1,
+                                 "una extension no puede esconder un secreto")
+
+    def test_a_compressed_image_is_still_left_alone(self):
+        self.stage("logo.png", b"\x89PNG\r\n\x1a\n" + bytes(range(64)))
+        self.assertEqual(self.scan("--staged", "logo.png").returncode, 0,
+                         "un binario comprimido sin texto legible no es un hallazgo")
 
 
 class InstalledHookTests(unittest.TestCase):

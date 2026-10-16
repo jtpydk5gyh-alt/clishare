@@ -26,25 +26,29 @@ PATTERNS = (
      "clave privada"),
 )
 
-ALLOWLIST_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".whl", ".sqlite3", ".pyc")
+ALLOWLIST_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf")
 
 
 def tracked_files(include_all: bool, explicit: list[str]) -> list[str]:
     if explicit:
         return explicit
-    arguments = ["ls-files"] if include_all else ["diff", "--cached", "--name-only", "--diff-filter=ACM"]
-    result = subprocess.run(["git", *arguments], capture_output=True, text=True, check=False)
-    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if include_all:
+        arguments = ["ls-files", "-z"]
+    else:
+        arguments = ["diff", "--cached", "--name-only", "--diff-filter=ACM", "-z"]
+    result = subprocess.run(["git", *arguments], capture_output=True, check=False)
+    if result.returncode != 0:
+        return []
+    return [name for name in result.stdout.decode("utf-8", errors="replace").split("\0") if name]
 
 
 def committed_text(name: str, revision: str) -> str | None:
     prefix = revision[:-1] if revision.endswith(":") else revision
     result = subprocess.run(["git", "show", f"{prefix}:{name}"],
-                            capture_output=True, text=True, check=False, encoding="utf-8",
-                            errors="strict")
+                            capture_output=True, check=False)
     if result.returncode != 0:
         return None
-    return result.stdout
+    return result.stdout.decode("utf-8", errors="replace")
 
 
 def is_exempt(name: str) -> bool:
@@ -74,8 +78,8 @@ def scan(paths: list[str], revision: str) -> tuple[list[tuple[str, int, str, str
 
 def _read_worktree(name: str) -> str | None:
     try:
-        return Path(name).read_text(encoding="utf-8")
-    except (UnicodeDecodeError, OSError):
+        return Path(name).read_bytes().decode("utf-8", errors="replace")
+    except OSError:
         return None
 
 
@@ -96,7 +100,18 @@ def redact_sample(sample: str) -> str:
     return f"{masked} ({len(sample)} caracteres)"
 
 
+def _force_utf8_output() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _force_utf8_output()
     arguments = list(sys.argv[1:] if argv is None else argv)
     include_all = "--all" in arguments
     arguments = [item for item in arguments if item != "--all"]
