@@ -44,10 +44,20 @@ class Session:
     def project_name(self):
         return self._field("project_name")
 
-    def remember(self, name=None, token=None, project=None, project_name=None):
+    @property
+    def provider(self):
+        return self._field("provider")
+
+    @property
+    def model(self):
+        return self._field("model")
+
+    def remember(self, name=None, token=None, project=None, project_name=None,
+                 provider=None, model=None):
         payload = self._read()
         for key, value in (("name", name), ("token", token),
-                           ("project", project), ("project_name", project_name)):
+                           ("project", project), ("project_name", project_name),
+                           ("provider", provider), ("model", model)):
             if value is not None:
                 payload[key] = value
         self._write(payload)

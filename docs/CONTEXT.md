@@ -6,7 +6,7 @@ agente pueda orientarse sin releer la conversación.
 
 ## Dónde está el proyecto hoy
 
-**Versión 0.4.0, construida localmente con checksum; no publicada ni firmada.**
+**Versión 0.5.0, construida localmente con checksum; no publicada ni firmada.**
 52 commits en `origin/main`, todos con noreply. La suite local actual y sus
 omisiones justificadas se registran abajo. CI verde en Windows y Linux × Python
 3.11, 3.12 y 3.13. Un solo ruleset, `main-integrity`, con `Personal data
@@ -34,12 +34,12 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | Dato | Valor |
 | --- | --- |
 | Repositorio | `jtpydk5gyh-alt/cshcli`, público, licencia MIT |
-| Versión | `0.4.0`, artefacto local con `dist/SHA256SUMS`; no publicado ni firmado |
+| Versión | `0.5.0`, artefacto local con `dist/SHA256SUMS`; no publicado ni firmado |
 | Rama por defecto | `main`, 52 commits en `origin/main`, todos con la noreply de GitHub |
 | Módulo Python | `cshcli`, 21 módulos, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 58, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 541 verdes; 5 omitidas: 2 por symlink, 2 por no haber PostgreSQL y 1 permiso POSIX en Windows |
+| Pruebas | 548 verdes; 5 omitidas: 2 por symlink, 2 por no haber PostgreSQL y 1 permiso POSIX en Windows |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
@@ -398,9 +398,9 @@ existe ningún camino por el que esto fusione en silencio. Y una revocación
 tras la aceptación **suspende** la cola en vez de integrar bajo el permiso
 antiguo: `process_next` lanza `integration_suspended` y espera a una persona.
 
-## Versionado: por qué 0.2.0, 0.3.0 y 0.4.0
+## Versionado: por qué 0.2.0, 0.3.0, 0.4.0 y 0.5.0
 
-Decisión del propietario: **después de un cambio grande se versiona**. Tres
+Decisión del propietario: **después de un cambio grande se versiona**. Cuatro
 veces, con dos razones distintas:
 
 - **`0.1.0` → `0.2.0`**: runner, DAG, cola, despliegues, presupuestos e
@@ -415,6 +415,10 @@ veces, con dos razones distintas:
   implícito, la sesión local, las rutas HTTP de la cola y el cierre del
   compare-and-swap. Sigue siendo romper una capacidad anterior —`start` ya no
   es un impresor— y añadir una nueva, así que tampoco es un parche.
+- **`0.4.0` → `0.5.0`**: el bucle conversacional y el proveedor y modelo en la
+  sesión. Un `cshcli` a secas pasó a ser un chat, y `cshcli chat` dejó de
+  exigir `--provider`. Romper ese contrato es cambio de comportamiento de un
+  comando existente, no una corrección: por eso menor y no parche.
 
 `scripts/release.py` construye, genera `SHA256SUMS` y **verifica la copia
 instalada**, no el árbol de trabajo: probar el árbol no probaría el artefacto.
@@ -865,6 +869,30 @@ done | sort -u                                              # una sola línea
 git fsck --no-reflogs                                       # sin salida
 ```
 
+## El bucle conversacional
+
+`cshcli` a secas ahora abre un chat. Con la sesión lista imprime un cartel
+—nombre, proyecto, proveedor— y lee líneas hasta `/salir`, `/quit` o Ctrl-D.
+Sin sesión lista sigue abriendo el menú de primera ejecución. Un error del
+proveedor se imprime y el bucle sigue; no termina la sesión.
+
+El obstáculo real no era el bucle: era que para proveedores con clave API,
+`--model` es **obligatorio**. Un chat que solodultera el proveedor no tenía con
+qué llamar. Por eso el asistente guarda también el proveedor y el modelo en
+`.cshcli/session.json`, y `--provider`/`--model` existen ahora en la raíz, no
+solo en el subcomando.
+
+Si ya hay una clave guardada, el asistente **elige** ese proveedor en vez de
+preguntar cuál. Es la diferencia entre "¿qué proveedor usas?" y nada.
+
+La límite que sigue declarado: cada línea es una consulta independiente. No
+hay memoria de conversación entre turnos. Eso está anotado como pendiente en
+`README`, `USAGE` y `STATUS`, no vendido como conversación.
+
+`run_loop` recibe la función de consulta como parámetro, así que el bucle se
+prueba entero sin contactar a ningún proveedor: cinco casos cubren la línea
+enviada, `/salir`, líneas vacías, fin de entrada y error del proveedor.
+
 ## La cola exige aceptación previa
 
 El hueco que había quedado abierto después de 0.4.0 está cerrado. La cola de
@@ -975,5 +1003,5 @@ La otra observación del revisor **queda cerrada**: la puerta de aceptación es
 ahora obligatoria para la cola, con comprobación al encolar y antes de integrar.
 
 Cierre reproducible de esta tanda: las 13 pruebas HTTP de la cola pasan; la
-suite completa pasa con **541 tests en 296.210 s** y 5 omisiones justificadas.
+suite completa pasa con **548 tests en 312.955 s** y 5 omisiones justificadas.
 `compileall` sobre `src`, `tests` y `scripts` termina sin salida.

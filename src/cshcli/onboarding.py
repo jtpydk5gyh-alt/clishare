@@ -173,20 +173,43 @@ def _shared(client, session, reader, secret, out):
     return project
 
 
-def _provider_key(keyring, reader, secret, out):
-    for name in sorted(PROVIDER_VARIABLES):
-        if keyring.resolve(name)[0]:
-            out(f"  Ya tienes una clave de {name}.")
-            return
+def _provider_setup(session, keyring, reader, secret, out):
+    known = sorted(name for name in PROVIDER_VARIABLES if keyring.resolve(name)[0])
+    if known and not session.provider:
+        session.remember(provider=known[0])
+    if session.provider:
+        out(f"  Proveedor: {session.provider}.")
+        return
     provider = _pick(f"  ¿Qué proveedor usas? ({'/'.join(sorted(PROVIDER_VARIABLES))}) ",
                      set(PROVIDER_VARIABLES), reader, out)
-    while True:
+    while not keyring.resolve(provider)[0]:
         value = secret(f"  Clave de {provider} (no se muestra): ")
         if (value or "").strip():
             keyring.set(provider, value)
             out(f"  Clave guardada en {keyring.path}")
-            return
+            break
         out("  La clave llegó vacía; inténtalo otra vez.")
+    session.remember(provider=provider)
+
+
+def run_loop(provider, model, ask, reader=None, out=None):
+    reader = reader or input
+    out = out or print
+    while True:
+        try:
+            line = reader("> ")
+        except EOFError:
+            out("")
+            return 0
+        line = (line or "").strip()
+        if not line:
+            continue
+        if line in {"/exit", "/quit", "/salir"}:
+            return 0
+        try:
+            out(ask(provider, model, line))
+        except DomainError as error:
+            out(f"[{error.code}] {error}")
 
 
 def run_wizard(client, session, keyring, reader=None, secret=None, out=None):
@@ -195,7 +218,7 @@ def run_wizard(client, session, keyring, reader=None, secret=None, out=None):
     secret = secret or (lambda prompt: getpass.getpass(prompt, stream=sys.stderr))
     if session.ready():
         out(f"\n  Ya estás listo: {session.name} en '{session.project_name}'.")
-        out("  Escribe 'cshcli' para empezar.\n")
+        out("  Escribe 'cshcli' para hablar con tu agente.\n")
         return 0
     out(f"\n  CSHCLI {__version__} — coordinas agentes con tus propias cuentas\n")
     out(MENU)
@@ -209,7 +232,7 @@ def run_wizard(client, session, keyring, reader=None, secret=None, out=None):
         _remember(session, _new_project(client, reader, out))
     else:
         _shared(client, session, reader, secret, out)
-    _provider_key(keyring, reader, secret, out)
+    _provider_setup(session, keyring, reader, secret, out)
     out(f"\n  Listo. Escribe 'cshcli' para hablar con tu agente en "
         f"'{session.project_name}'.\n")
     return 0

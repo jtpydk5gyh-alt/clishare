@@ -4,7 +4,7 @@ AI CLI with personal credentials and shared project coordination. The idea: you
 create a project, invite other people, and everyone works with their own agents
 and AI accounts while sharing decisions and reserving files.
 
-**Status: local 0.4.0 pilot.** The CLI, local HTTP coordinator, SQLite, projects,
+**Status: local 0.5.0 pilot.** The CLI, local HTTP coordinator, SQLite, projects,
 invitations, versioned memory, leases, text-based AI adapters, mediated runner,
 automatic worktrees, task DAG, local integration queue, deployment coordination,
 usage and budgets are in place. The remote multi-user service and a real cloud
@@ -27,7 +27,7 @@ python scripts/cshcli.py start
 rest:
 
 ```text
-  CSHCLI 0.4.0 — coordinas agentes con tus propias cuentas
+  CSHCLI 0.5.0 — coordinas agentes con tus propias cuentas
 
   1) Sesión           Trabaja por tu cuenta
   2) Unirme o crear   Un proyecto compartido con otra persona
@@ -41,9 +41,27 @@ without one you create a project and receive a code to hand to someone else.
 
 Nothing needs to be running first. When no coordinator is reachable, each
 command starts one inside its own process on an ephemeral port and closes it on
-exit. Your name, current project and token are kept in
+exit. Your name, current project, provider and token are kept in
 `.cshcli/session.json`, so later commands work with no `--url`, no
-`CSHCLI_TOKEN` and no server:
+`CSHCLI_TOKEN` and no server.
+
+Once the session is ready, `cshcli` on its own opens a chat:
+
+```text
+  ana · demo · openai    /salir para salir
+
+> _
+```
+
+Type a line, get an answer, type the next one. `/salir`, `/quit` or Ctrl-D
+leaves. A provider error is printed and the loop continues rather than exiting.
+
+For API providers the model identifier is explicit and required, because the
+tool does not guess one. `cshcli --model gpt-4o-mini` sets it for the session;
+`cshcli chat --provider openai --model gpt-4o-mini "one question"` stays a
+single query without entering the loop.
+
+Other commands need nothing either:
 
 ```powershell
 python scripts/cshcli.py project list
@@ -271,7 +289,7 @@ python -m compileall -q src tests scripts
 python scripts/cshcli.py --help
 ```
 
-The current Windows run passes 541 tests with 5 explicit skips for unavailable
+The current Windows run passes 548 tests with 5 explicit skips for unavailable
 POSIX symbolic-link/file-permission guarantees and real PostgreSQL. The tests
 use real SQLite, local HTTP, Git, and provider fixtures. The synchronised
 races pit eleven agents from two people against the same resource, memory
@@ -285,8 +303,9 @@ against the commit being merged.
 
 ## Next deliveries
 
-1. Remote service with real HTTPS and PostgreSQL, after concurrency and restore drills pass.
-2. A conversational `cshcli` loop, so a ready session drops straight into chat instead of naming the next command.
+1. A conversational loop that keeps the conversation in context across turns;
+   today each line is an independent query.
+2. Remote service with real HTTPS and PostgreSQL, after concurrency and restore drills pass.
 3. A signed and published release whose wheel and `SHA256SUMS` URLs are exercised end to end.
 4. Windows protection for the local key store beyond ordinary file placement.
 5. Native provider OAuth only after an explicit provider-by-provider eligibility review.

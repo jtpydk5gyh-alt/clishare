@@ -7,6 +7,27 @@ once it leaves alpha.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-16
+
+`cshcli` on its own now opens a chat.
+
+### Added
+- A conversational loop. With a ready session, `cshcli` prints a banner and
+  reads lines until `/salir`, `/quit` or Ctrl-D. A provider error is printed
+  and the loop continues rather than ending the session.
+- `run_loop` takes the ask function, so the loop is tested without contacting a
+  provider.
+- `--provider` and `--model` at the root, so they work for the bare command and
+  for `cshcli chat` alike.
+- The wizard records the provider, and reuses a key that is already stored
+  instead of asking which provider to use.
+
+### Changed
+- `cshcli chat` no longer requires `--provider`: it falls back to the provider
+  in the session. `prompt` is now optional, and without it the command enters
+  the loop instead of printing one answer.
+- A bare `cshcli` runs the first-run menu only when the session is not ready.
+
 ## [0.4.0] - 2026-10-16
 
 The first run was eight commands across two terminals, and `start` only printed
@@ -96,7 +117,7 @@ what to run next. It is now one command that does the work.
   ever prints a key, and a test checks that asking about one provider does not
   reveal another's.
 - Recorded where the project actually stands: version 0.3.0, 52 commits on
-  `origin/main`, 541 passing tests, and a table that says for each remaining
+  `origin/main`, 548 passing tests, and a table that says for each remaining
   item whether it can be done on this machine. The document states what cannot
   be checked instead of implying it.
 - `docs/STATUS.md` gained a "What is verified, and what is not" heading, a
@@ -246,7 +267,7 @@ what to run next. It is now one command that does the work.
   leaving `main` with a red suite.
 
 ### Verification
-- **541 tests pass**, with 5 explicit skips: two symbolic-link cases, two real
+- **548 tests pass**, with 5 explicit skips: two symbolic-link cases, two real
   PostgreSQL cases, and one POSIX permission case on Windows.
 - **CI is active** and green on Windows and Linux with Python 3.11, 3.12 and
   3.13.

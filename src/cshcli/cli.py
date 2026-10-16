@@ -10,7 +10,7 @@ from . import __version__, providers, updater
 from .client import Client
 from .errors import DomainError
 from .local import connect, database_path, session_root
-from .onboarding import PROVIDER_VARIABLES, Keyring, run_wizard
+from .onboarding import PROVIDER_VARIABLES, Keyring, run_loop, run_wizard
 from .server import make_server
 from .session import Session
 
@@ -20,9 +20,12 @@ def parser():
     root.add_argument("--version", action="version", version=__version__)
     root.add_argument("--url", default=os.environ.get("CSHCLI_URL"),
                       help="URL del coordinador compartido; sin esto se usa uno local efímero")
+    root.add_argument("--provider",
+                      choices=["openai", "anthropic", "google", "minimax", "codex", "claude-code", "gemini-cli"],
+                      help="Proveedor del chat; sin el se usa el de la sesión")
+    root.add_argument("--model", help="Modelo explícito obligatorio para API keys")
     commands = root.add_subparsers(dest="command")
     start = commands.add_parser("start", help="Primera ejecución: menú de sesión o proyecto compartido")
-    start.add_argument("--provider", default="openai", help="Proveedor a configurar")
     key = commands.add_parser("key", help="Guardar una clave de proveedor fuera del entorno")
     key_commands = key.add_subparsers(dest="action", required=True)
     key_set = key_commands.add_parser("set", help="Guardar una clave; se pide sin eco")
@@ -97,10 +100,10 @@ def parser():
     provider_commands.add_parser("status")
     login = provider_commands.add_parser("login", help="Abrir el inicio de sesión del CLI oficial instalado")
     login.add_argument("provider", choices=["codex", "claude", "gemini"])
-    chat = commands.add_parser("chat", help="Consulta de texto; claves API en el entorno local")
-    chat.add_argument("--provider", choices=["openai", "anthropic", "google", "minimax", "codex", "claude-code", "gemini-cli"], required=True)
+    chat = commands.add_parser("chat", help="Chat conversacional con tu clave local")
+    chat.add_argument("--provider", choices=["openai", "anthropic", "google", "minimax", "codex", "claude-code", "gemini-cli"])
     chat.add_argument("--model", help="Modelo explícito obligatorio para API keys")
-    chat.add_argument("prompt")
+    chat.add_argument("prompt", nargs="?", help="Con prompt: una sola consulta. Sin prompt: bucle de chat")
 
     context = commands.add_parser("context", help="Manifiesto de contexto acotado para una ejecución")
     context.add_argument("project")
@@ -192,6 +195,22 @@ def _start(client, session, args):
     return run_wizard(client, session, _keyring())
 
 
+def _chat_loop(session, args):
+    provider = getattr(args, "provider", None) or session.provider
+    model = getattr(args, "model", None) or session.model
+    prompt = getattr(args, "prompt", None)
+    if not provider:
+        raise DomainError(400, "provider_required",
+                          "Define un proveedor con --provider o ejecuta 'cshcli start'.")
+    if prompt:
+        print(providers.chat(provider, model, prompt))
+        return 0
+    session.remember(provider=provider)
+    print(f"\n  {session.name} · {session.project_name} · {provider}"
+          f"    /salir para salir\n")
+    return run_loop(provider, model, providers.chat)
+
+
 def _update(args):
     try:
         published = updater.newest_remote_version()
@@ -252,7 +271,8 @@ def _serve_remote(args):
 
 def execute(args):
     if args.command is None:
-        args.command = "start"
+        state = _session()
+        args.command = "chat" if state.ready() else "start"
     if args.command == "key":
         return _key(args)
     if args.command == "update":
@@ -273,10 +293,7 @@ def execute(args):
             return providers.login(args.provider)
         emit(providers.status())
         return 0
-    if args.command == "chat":
-        print(providers.chat(args.provider, args.model, args.prompt))
-        return 0
-    if args.command in {"auth", "start"}:
+    if args.command in {"auth", "start", "chat"}:
         client, closers, session = _connect(args)
     else:
         if not (os.environ.get("CSHCLI_TOKEN") or _session().token):
@@ -284,6 +301,8 @@ def execute(args):
                               "Ejecuta 'cshcli start' para crear tu identidad, o define CSHCLI_TOKEN.")
         client, closers, session = _connect(args)
     try:
+        if args.command == "chat":
+            return _chat_loop(session, args)
         if args.command == "start":
             return _start(client, session, args)
         return _dispatch(client, args)
