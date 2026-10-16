@@ -8,6 +8,11 @@ once it leaves alpha.
 ## [Unreleased]
 
 ### Added
+- `scripts/bump_version.py` and `tests/test_bump_version.py`. The script rewrites
+  the version across the package and the documents and refuses when a sentence
+  no longer matches exactly once; the test asserts that property against the
+  real repository, so reworded documentation fails a test instead of failing
+  silently at release time. The procedure is in `docs/RELEASES.md`.
 - The chat loop carries the conversation: each turn sends the previous turns,
   capped at the last 20 so it cannot grow without bound. `/limpiar` clears it.
 - `providers.chat` and `_api_chat` accept an optional `history`, and the request
@@ -130,7 +135,7 @@ what to run next. It is now one command that does the work.
   ever prints a key, and a test checks that asking about one provider does not
   reveal another's.
 - Recorded where the project actually stands: version 0.3.0, 52 commits on
-  `origin/main`, 558 passing tests, and a table that says for each remaining
+  `origin/main`, 573 passing tests, and a table that says for each remaining
   item whether it can be done on this machine. The document states what cannot
   be checked instead of implying it.
 - `docs/STATUS.md` gained a "What is verified, and what is not" heading, a
@@ -280,7 +285,7 @@ what to run next. It is now one command that does the work.
   leaving `main` with a red suite.
 
 ### Verification
-- **558 tests pass**, with 5 explicit skips: two symbolic-link cases, two real
+- **573 tests pass**, with 5 explicit skips: two symbolic-link cases, two real
   PostgreSQL cases, and one POSIX permission case on Windows.
 - **CI is active** and green on Windows and Linux with Python 3.11, 3.12 and
   3.13.
