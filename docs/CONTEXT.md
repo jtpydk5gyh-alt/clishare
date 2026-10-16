@@ -125,14 +125,30 @@ Tampoco está: una cadena de confianza pública —el certificado es autofirmado
 dura 30 días—, una segunda máquina, ni un restore hecho mientras otra máquina
 sirve tráfico.
 
-## El worktree del agente de auditoría
+## El worktree del agente de auditoría — cerrado
 
 `~/.codex/worktrees/security-audit/clishare`, rama `audit/security-and-integrity`,
-35 ficheros sin commitear. **Su trabajo útil ya estaba casi todo fusionado**, y
-`main` tiene 25 tests del guard frente a los 12 del worktree, más estrict. Pero
-faltaban dos, y valían: el hook instalado **bloqueando de verdad** un commit con
-secreto (main solo comprobaba que el fichero se escribía) y el instalador en un
-worktree enlazado. Rescatados, y el segundo destapó el defecto 4.
+35 ficheros sin commitear. Revisado fichero a fichero contra `main`.
+
+**Lo que había y su valor:**
+
+| Qué | Decisión |
+| --- | --- |
+| 2 tests del guard que `main` no tenía | **Rescatados.** El hook instalado bloqueando de verdad un commit con secreto, y el instalador en un worktree enlazado. El segundo destapó un fallo de seguridad |
+| 30 patrones de `.gitignore` para credenciales | **Rescatados.** `.netrc`, `.npmrc`, `.pypirc`, `credentials.json`, `service-account*.json`, `*.p12`, `*.pfx`, `*.crt`, `*.keystore` y `*_PRIVATE.md`. Ahora hay un test que falla si alguno vuelve a ser stageable |
+| El resto del código | Versiones **anteriores** de ficheros que `main` lleva 20 versiones por delante. Nada rescatable |
+| `OPEN_SOURCE_PLAN.md` con la direccion relay privada del propietario | **No se rescata.** Es exactamente el dato que este repositorio existe para no publicar |
+
+**El detalle que decidia la urgencia:** ese worktree contenia la direccion
+relay privada del propietario, la que este repositorio existe para no
+publicar. `main` ya no la tiene. Mientras el worktree siga en disco, un
+`git add` desde alli la volveria a meter.
+
+El guard de datos personales bloqueo este mismo commit al escribir esa
+direccion aqui, y con razon: describir el hallazgo no es una excepcion a no
+publicarlo.
+
+Cerrado el 16 de octubre.
 
 ## Lo único que sigue bloqueado
 

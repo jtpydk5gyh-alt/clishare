@@ -303,6 +303,44 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(result, 1)
 
 
+class IgnoredSecretFilesTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.repository = Path(self.temp.name) / "repo"
+        self.repository.mkdir()
+        shutil.copyfile(Path(__file__).resolve().parents[1] / ".gitignore",
+                        self.repository / ".gitignore")
+        subprocess.run(["git", "init", "-q"], cwd=self.repository, check=True,
+                       capture_output=True)
+
+    def ignored(self, name):
+        result = subprocess.run(["git", "check-ignore", "-q", name],
+                                cwd=self.repository, capture_output=True)
+        return result.returncode == 0
+
+    def test_credential_files_are_never_stageable(self):
+        for name in ("credentials.json", "service-account.json", ".netrc",
+                     ".npmrc", ".pypirc", "server.crt", "key.p12", "signing.pfx",
+                     "vault.keystore", "notes_PRIVATE.md"):
+            with self.subTest(name=name):
+                self.assertTrue(self.ignored(name),
+                                f"{name} se podria commitear por accidente")
+
+    def test_the_pattern_replaces_two_concrete_filenames(self):
+        for name in ("docs/REVISION_PRIVATE.md", "docs/ESTADO_PRIVATE.md"):
+            with self.subTest(name=name):
+                self.assertTrue(self.ignored(name))
+
+    def test_the_web_build_stays_out(self):
+        self.assertTrue(self.ignored("web/index.html"))
+
+    def test_ordinary_source_is_not_ignored(self):
+        for name in ("src/cshcli/cli.py", "docs/STATUS.md", "README.md"):
+            with self.subTest(name=name):
+                self.assertFalse(self.ignored(name))
+
+
 class InstalledHookTests(unittest.TestCase):
     TOKEN = "ghp_" + "Z" * 36
 
