@@ -10,12 +10,12 @@ Este bloque prevalece sobre cualquier fotografía histórica contradictoria que
 permanezca más abajo. No reinterpretar los estados antiguos como el estado
 actual.
 
-- `origin/main` está en `ced7d16`, squash del **PR #76**. Es la versión
-  **0.9.0** y tiene **70 commits**. El PR pasó **14 checks** en verde y se
-  fusionó por squash sin `--admin`.
-- La rama local activa es `main`, sincronizada con el remoto, con el árbol
-  limpio. Solo hay un worktree registrado, el principal. No hay agentes
-  trabajando ni otro worktree que rescatar.
+- `origin/main` está en `6c930d8`, squash del **PR #77**. Es la versión
+  **0.9.0** y tiene **71 commits**. Los dos últimos PRs, el **#76** y el **#77**,
+  pasaron **14 checks** en verde y se fusionaron por squash sin `--admin`.
+- La rama local está sincronizada con el remoto y el árbol está limpio. Solo hay
+  un worktree registrado, el principal. No hay agentes trabajando ni otro
+  worktree que rescatar.
 - El guard ya rechaza credenciales **por nombre** antes de intentar leerlas, y
   cubre los mismos nombres y sufijos que el chat rechaza. Conserva
   `.env.example` y evita el falso positivo `credential_manager.py`.
@@ -24,8 +24,8 @@ actual.
 - La regla de cero comentarios y docstrings se cumple ya en todo el árbol:
   cero docstrings y un único comentario, el shebang de
   `scripts/push_rewritten_main.py`.
-- La última suite completa terminó con **700 pruebas verdes y 26 omitidas con
-  motivo en 352.249 s**. Las 20 pruebas que dependen de PostgreSQL también se
+- La última suite completa terminó con **703 pruebas verdes y 26 omitidas con
+  motivo en 422.256 s**. Las 20 pruebas que dependen de PostgreSQL también se
   ejecutaron contra PostgreSQL 16.2 real y pasaron. El CI del PR #76 repitió la
   suite en Windows y Linux × Python 3.11, 3.12 y 3.13: **14 checks en verde**.
 
@@ -358,7 +358,7 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | Módulo Python | `cshcli`, 24 módulos más `__init__` y `__main__`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 76, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 700 verdes; 26 omitidas con motivo: 20 necesitan `CSHCLI_REMOTE_DSN` y **se ejecutaron** contra PostgreSQL 16.2 |
+| Pruebas | 703 verdes; 26 omitidas con motivo: 20 necesitan `CSHCLI_REMOTE_DSN` y **se ejecutaron** contra PostgreSQL 16.2 |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
