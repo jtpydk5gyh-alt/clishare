@@ -502,6 +502,18 @@ class CliStartTests(unittest.TestCase):
         self.assertIn("una nota", chat.call_args[0][2])
         self.assertIn("/ver <archivo>", self.output.getvalue())
 
+    def test_buscar_through_the_cli_puts_the_hits_in_the_conversation(self):
+        self.run_main(["start"], ["1", "ana", "equipo", "openai"], ["sk-test"])
+        (self.work / "notas.md").write_text("una nota\n", encoding="utf-8", newline="\n")
+        self.output = io.StringIO()
+        with mock.patch("cshcli.cli.providers.chat", return_value="r") as chat, \
+             mock.patch("builtins.input", side_effect=["/buscar nota", "/salir"]), \
+             mock.patch.object(Path, "cwd", return_value=self.work), \
+             mock.patch("sys.stdout", self.output):
+            main([])
+        self.assertIn("notas.md:1:", chat.call_args[0][2])
+        self.assertIn("/buscar", self.output.getvalue())
+
     def test_the_chat_receives_the_shared_memory_as_context(self):
         self.run_main(["start"], ["1", "ana", "equipo", "openai"], ["sk-test"])
         state = json.loads((self.home / "session.json").read_text(encoding="utf-8"))

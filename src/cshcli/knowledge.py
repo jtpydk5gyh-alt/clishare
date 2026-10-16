@@ -21,7 +21,11 @@ SKIPPED_SUFFIXES = {
 FAVOURITE_PREFIXES = ("README", "docs/", "src/", "tests/", "test/", "app/", "lib/")
 INDEX_LIMIT = 4000
 NOTE_LIMIT = 8000
+SEARCH_LIMIT = 4000
+MATCH_LIMIT = 20
 _SNIFF_BYTES = 8192
+_LINE_LIMIT = 200
+_SEARCH_FOOTER = "Usa /ver <ruta> para ver el archivo entero."
 _NOT_OPENING = "Habla con la persona. No tienes que explicar estos bloques."
 _FENCE = "```"
 
@@ -56,8 +60,7 @@ def _header(shown: int, total: int) -> str:
     return f"Archivos del proyecto actual ({shown} de {total}; {total - shown} omitidos):"
 
 
-def index_text(root, limit: int = INDEX_LIMIT) -> str:
-    base = Workspace(Path(root), "chat")
+def _walk(base: Workspace) -> list[str]:
     paths = []
     for directory, subdirectories, files in os.walk(base.root, followlinks=False):
         subdirectories[:] = [name for name in sorted(subdirectories)
@@ -67,9 +70,14 @@ def index_text(root, limit: int = INDEX_LIMIT) -> str:
             target = Path(directory) / name
             if _readable_file(target):
                 paths.append(target.relative_to(base.root).as_posix())
+    paths.sort(key=_rank)
+    return paths
+
+
+def index_text(root, limit: int = INDEX_LIMIT) -> str:
+    paths = _walk(Workspace(Path(root), "chat"))
     if not paths:
         return ""
-    paths.sort(key=_rank)
     lines, used = [], 0
     for path in paths:
         line = f"- {path}"
@@ -95,3 +103,49 @@ def note_text(root, relative_path: str, limit: int = NOTE_LIMIT) -> str:
     else:
         clipped = text
     return f"{head}{_FENCE}\n{clipped}\n{_FENCE}"
+
+
+def _matches(base: Workspace, path: str, needle: str, found: list, room: int) -> int:
+    try:
+        content = base.read(path)
+    except DomainError:
+        return 0
+    if b"\x00" in content[:_SNIFF_BYTES]:
+        return 0
+    total = 0
+    for number, line in enumerate(content.decode("utf-8", errors="replace").splitlines(), start=1):
+        if needle in line.casefold():
+            total += 1
+            if len(found) < room:
+                found.append(f"- {path}:{number}: {line.strip()[:_LINE_LIMIT]}")
+    return total
+
+
+def _search_header(shown: int, total: int, query: str) -> str:
+    name = "coincidencia" if total == 1 else "coincidencias"
+    where = "en el proyecto actual"
+    if shown == total:
+        return f"{total} {name} de {query!r} {where}"
+    return f"{shown} de {total} {name} de {query!r} {where}; {total - shown} más"
+
+
+def search_text(root, query: str, limit: int = SEARCH_LIMIT, matches: int = MATCH_LIMIT) -> str:
+    if not isinstance(query, str) or not query.strip():
+        raise DomainError(400, "empty_query", "Escribe el texto que quieres buscar.")
+    base = Workspace(Path(root), "chat")
+    needle = query.strip().casefold()
+    found: list = []
+    total = 0
+    for path in _walk(base):
+        total += _matches(base, path, needle, found, matches)
+    if not found:
+        return ""
+    head = _search_header(len(found), total, query.strip())
+    room = max(0, limit - len(head) - len(_SEARCH_FOOTER) - 1)
+    lines, used = [], 0
+    for line in found:
+        if used + len(line) > room:
+            break
+        lines.append(line)
+        used += len(line) + 1
+    return f"{head}\n" + "\n".join(lines) + "\n" + _SEARCH_FOOTER
