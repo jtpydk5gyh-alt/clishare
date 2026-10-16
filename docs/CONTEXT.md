@@ -64,9 +64,95 @@ que esta máquina no concede, dos de PostgreSQL que no existen aquí y uno de
 permisos POSIX que no aplica en Windows; los casos de junction de Windows sí
 corren. `compileall`, el guard y la auditoría AST de docstrings (`[]`) pasan.
 
+## Tranche: infraestructura real — 0.9.0
+
+Lo que llevaba semanas declarado como **"no se puede en esta máquina"** ya se
+puede. Sin Docker, sin WSL y sin privilegios de administrador.
+
+**La vía: `pip install pgserver`** trae los binarios de PostgreSQL 16.2.
+`initdb` levanta un clúster de verdad en `~/cshcli-pg/cluster`, puerto 55432, en
+17.9 s. El driver es el extra `remote` que el proyecto ya declaraba. **Ninguno
+de los dos es dependencia del producto**: el paquete sigue sin tener ninguna.
+
+## Los cuatro defectos que solo aparecieron al probar de verdad
+
+Esto es lo que justifica el trabajo: los cuatro estaban en el código y **ninguno
+podía verse sin una base de datos real**.
+
+1. **`REAL` es `float4` en PostgreSQL.** El esquema declaraba cada marca de
+   tiempo como `REAL`, que guarda siete cifras significativas. Un instante Unix
+   de este siglo necesita trece: una lease que caducaba en 60 segundos se
+   guardaba redondeada a los **128 segundos más cercanos** y seguía viva
+   minutos. En SQLite `REAL` es float64, y por eso el piloto no lo vio. Ahora
+   todo es `DOUBLE PRECISION`, y hay un test que falla si vuelve un `REAL`.
+
+2. **La migración y su rollback eran el mismo fichero.** `001_remote.sql`
+   terminaba en `DROP TABLE`, así que aplicarla creaba el esquema y lo borraba
+   acto seguido. El rollback pasó a `001_remote.down.sql`, y `scripts/migrate.py`
+   **rechaza cualquier fichero cuyo texto contenga `DROP`**. El defecto se
+   convirtió en invarianza.
+
+3. **`sys.path.insert(0, ".../scripts")` rompía los procesos hijo.** En Windows,
+   `spawn` hereda el `sys.path`, así que `import cshcli` resolví­a
+   `scripts/cshcli.py` y los once procesos de la carrera morían con código 1
+   — un fallo a kilómetros de su causa. Ahora se usa `append`, y un test
+   comprueba que nadie vuelva a usar `insert`.
+
+4. **`install_hooks.py` fallaba en un worktree enlazado.** Allí `.git` es un
+   *fichero*, no un directorio: el instalador reventaba con `FileExistsError` y
+   **el hook no se instalaba, es decir el guard dejaba de bloquear commits**.
+   Este lo encontró un test del worktree del agente de auditoría que `main` no
+   tenía. Resuelto con `git rev-parse --git-common-dir`, y rescatados.
+
+## Lo que quedó probado, con su evidencia
+
+| Qué | Evidencia |
+| --- | --- |
+| PostgreSQL real | 16.2 en Windows, nueve tablas y la secuencia de fences |
+| Concurrencia | once procesos independientes, `file:src` contra `file:src/a.py`, **gana exactamente uno**, y en la base queda una sola lease |
+| Restore | `pg_dump`/`pg_restore` sobre base vacía, recuento por tabla, **restaurar sobre base poblada se rechaza**, y el fence nunca retrocede |
+| HTTPS | `serve --remote` levanta, `/healthz` responde por TLS con `database: postgresql`; el HTTP plano se rechaza y un cliente que no confía en el certificado se rechaza en el handshake |
+
+## Lo que sigue sin estar verificado, y por qué está bien que lo esté
+
+`RemoteStore.verification()` **sigue diciendo `unverified`** y
+`assert_production_ready()` sigue negándose a servir. No es que no se haya
+avanzado: el criterio que codifica son once **máquinas**, y esto es una. Que
+once procesos ganen uno demuestra que el bloqueo de fila funciona; no que el
+servicio sea seguro de exponer.
+
+Tampoco está: una cadena de confianza pública —el certificado es autofirmado y
+dura 30 días—, una segunda máquina, ni un restore hecho mientras otra máquina
+sirve tráfico.
+
+## El worktree del agente de auditoría
+
+`~/.codex/worktrees/security-audit/clishare`, rama `audit/security-and-integrity`,
+35 ficheros sin commitear. **Su trabajo útil ya estaba casi todo fusionado**, y
+`main` tiene 25 tests del guard frente a los 12 del worktree, más estrict. Pero
+faltaban dos, y valían: el hook instalado **bloqueando de verdad** un commit con
+secreto (main solo comprobaba que el fichero se escribía) y el instalador en un
+worktree enlazado. Rescatados, y el segundo destapó el defecto 4.
+
+## Lo único que sigue bloqueado
+
+**La firma de la release, y es una decisión del propietario, no un bloqueo de
+infraestructura.**
+
+El mecanismo **está instalado y probado**. `minisign` 0.12, verificado contra
+la clave pública que publica el propio proyecto
+(`RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3`) **antes de
+ejecutarlo**. Se generó una clave de descarte, se firmó `SHA256SUMS`, se
+verificó y **se borró**: el camino está probado sin crear una identidad en nombre
+de nadie.
+
+Lo único que falta es que el propietario decida si genera su clave. El
+procedimiento completo está en `docs/RELEASES.md`. La clave privada es suya y no
+debe estar nunca en el repositorio ni en una copia que se sincronice.
+
 ## Dónde está el proyecto hoy
 
-**Versión 0.8.0, construida localmente con checksum; no publicada ni firmada.**
+**Versión 0.9.0, construida localmente con checksum; no publicada ni firmada.**
 61 commits en `origin/main`, todos con noreply. La suite local actual y sus
 omisiones justificadas se registran abajo. CI verde en Windows y Linux × Python
 3.11, 3.12 y 3.13. Un solo ruleset, `main-integrity`, con `Personal data
@@ -94,12 +180,12 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | Dato | Valor |
 | --- | --- |
 | Repositorio | `jtpydk5gyh-alt/cshcli`, público, licencia MIT |
-| Versión | `0.8.0`, artefacto local con `dist/SHA256SUMS`; no publicado ni firmado |
+| Versión | `0.9.0`, artefacto local con `dist/SHA256SUMS`; no publicado ni firmado |
 | Rama por defecto | `main`, 61 commits en `origin/main`, todos con la noreply de GitHub |
 | Módulo Python | `cshcli`, 24 módulos más `__init__` y `__main__`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 67, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 622 verdes; 8 omitidas: 5 por symlink, 2 por no haber PostgreSQL y 1 permiso POSIX en Windows |
+| Pruebas | 664 verdes; 26 omitidas con motivo: 20 necesitan `CSHCLI_REMOTE_DSN` y **se ejecutaron** contra PostgreSQL 16.2 |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
@@ -250,7 +336,7 @@ Decisiones del propietario, 15 de octubre, en el orden en que se tomaron:
 2. Después, la cola del 8B, el 10 y el 11. **Los tres hechos.**
 3. Un plan escrito **antes** de tocar código, para online, simplicidad y
    actualización automática. **Escrito** en `docs/PLAN-ONLINE.md`.
-4. Versionar después de un cambio grande. **Hecho**: `0.8.0` con checksum y la
+4. Versionar después de un cambio grande. **Hecho**: `0.9.0` con checksum y la
    copia instalada verificada, y `0.4.0` tras el menú y el coordinador
    implícito. Publicar y firmar siguen pendientes.
 

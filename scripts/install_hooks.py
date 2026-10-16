@@ -7,6 +7,15 @@ import sys
 from pathlib import Path
 
 
+def common_git_directory() -> Path | None:
+    result = subprocess.run(["git", "rev-parse", "--path-format=absolute",
+                             "--git-common-dir"], capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        return None
+    value = result.stdout.strip()
+    return Path(value) if value else None
+
+
 def main() -> int:
     root = subprocess.run(["git", "rev-parse", "--show-toplevel"],
                           capture_output=True, text=True, check=False)
@@ -18,8 +27,16 @@ def main() -> int:
     if not guard.is_file():
         print("install_hooks: no existe el guard en este repositorio", file=sys.stderr)
         return 1
-    target = repository / ".git" / "hooks"
-    target.mkdir(parents=True, exist_ok=True)
+    shared = common_git_directory()
+    if shared is None:
+        print("install_hooks: no se pudo localizar el directorio git", file=sys.stderr)
+        return 1
+    target = shared / "hooks"
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+    except (OSError, NotADirectoryError):
+        print("install_hooks: no se pudieron crear los hooks de git", file=sys.stderr)
+        return 1
     pre_commit = target / "pre-commit"
     python = shlex.quote(Path(sys.executable).as_posix())
     script = f"#!/bin/sh\nexec {python} {shlex.quote(guard.as_posix())}\n"

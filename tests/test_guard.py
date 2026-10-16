@@ -1,6 +1,7 @@
 import importlib.util
 import io
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -300,6 +301,60 @@ class GuardTests(unittest.TestCase):
                 result = guard.main(["doc.md"])
 
         self.assertEqual(result, 1)
+
+
+class InstalledHookTests(unittest.TestCase):
+    TOKEN = "ghp_" + "Z" * 36
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / "repo"
+        self.root.mkdir()
+        self.scripts = self.root / "scripts"
+        self.scripts.mkdir()
+        for name in ("guard_secrets.py", "install_hooks.py"):
+            shutil.copyfile(Path(__file__).resolve().parents[1] / "scripts" / name,
+                            self.scripts / name)
+        self.g("git", "init", "-q")
+        self.g("git", "config", "user.email", guard.ALLOWED_EMAIL)
+        self.g("git", "config", "user.name", "Trankideal")
+        self.g("git", "config", "commit.gpgsign", "false")
+
+    def g(self, *command, cwd=None):
+        return subprocess.run(list(command), cwd=cwd or self.root,
+                              capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
+
+    def install(self, cwd=None):
+        return self.g(sys.executable, str(self.scripts / "install_hooks.py"), cwd=cwd)
+
+    def test_the_installed_hook_blocks_a_commit_carrying_a_secret(self):
+        installed = self.install()
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        (self.root / "clean.txt").write_text("nada\n", encoding="utf-8")
+        self.g("git", "add", "clean.txt")
+        first = self.g("git", "commit", "-qm", "limpio")
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        (self.root / "roto.txt").write_text(f"token {self.TOKEN}\n", encoding="utf-8")
+        self.g("git", "add", "roto.txt")
+        blocked = self.g("git", "commit", "-qm", "roto")
+        self.assertNotEqual(blocked.returncode, 0, "el hook dejo pasar un secreto")
+        self.assertNotIn(self.TOKEN, blocked.stdout + blocked.stderr)
+
+    def test_the_installer_finds_the_shared_hooks_of_a_linked_worktree(self):
+        (self.root / "seed.txt").write_text("nada\n", encoding="utf-8")
+        self.g("git", "add", "seed.txt", "scripts")
+        self.g("git", "commit", "--no-verify", "-qm", "base")
+        linked = Path(self.temp.name) / "worktree enlazado"
+        self.g("git", "worktree", "add", "-q", "-b", "enlazada", str(linked))
+        self.assertTrue((linked / ".git").is_file(),
+                        "en un worktree enlazado .git es un fichero, no un directorio")
+        result = self.install(cwd=linked)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.root / ".git" / "hooks" / "pre-commit").is_file(),
+                        "los hooks de un worktree enlazado viven en el "
+                        "repositorio principal, no en el worktree")
 
 
 if __name__ == "__main__":

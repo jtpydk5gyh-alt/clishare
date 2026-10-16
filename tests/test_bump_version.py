@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.append(str(Path(__file__).resolve().parents[1] / "scripts"))
 import bump_version
 
 
