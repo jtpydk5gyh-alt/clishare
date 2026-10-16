@@ -7,10 +7,68 @@ once it leaves alpha.
 
 ## [Unreleased]
 
-### Removed
-- `docs/GITHUB_SUPPORT_TICKET.md`. It was never tracked, held a private
-  address, and blocked commits. Since 0.7.0 the chat index listed it, so
-  `/ver` could have read it and sent it to a provider.
+## [0.9.0] - 2026-10-16
+
+The blockers that said "no server here" are gone. PostgreSQL runs, it is
+migrated, it is proved under concurrency, it restores, and the remote
+coordinator answers over TLS.
+
+### Added
+- `scripts/postgres_local.py`. A real PostgreSQL 16.2 cluster without Docker and
+  without a WSL distribution, using the binaries `pip install pgserver` brings.
+  `start`, `stop`, `dsn`, `destroy`. It is infrastructure, not a dependency.
+- `scripts/migrate.py`. Applies every `migrations/*.sql` that is not a rollback
+  and then **verifies the nine tables exist**. A file whose text contains `DROP`
+  is refused outright.
+- `scripts/tls_certificate.py`, a self-signed certificate and key.
+- `cshcli.remote_server`. `serve --remote` now binds, wraps the socket in TLS and
+  answers `/healthz` with the live database state. Previously it validated the
+  configuration and refused to start.
+- `tests/test_remote_server.py`, `tests/test_restore_postgres.py`,
+  `tests/test_postgres_local.py`, `tests/test_migrate.py`.
+
+### Fixed
+- **`REAL` is `float4` in PostgreSQL.** The schema declared every timestamp as
+  `REAL`, which keeps seven significant digits; a Unix instant in this century
+  needs thirteen. A lease expiring in 60 seconds was stored rounded to the
+  nearest 128 seconds and stayed alive for minutes. Every time column is now
+  `DOUBLE PRECISION`. SQLite's `REAL` is a double, which is why the pilot never
+  saw it, and why only a real server exposed it.
+- **The migration and its rollback were one file.** `001_remote.sql` ended with
+  `DROP TABLE`, so applying it created the schema and immediately removed it.
+  The rollback is now `001_remote.down.sql`.
+- **`sys.path.insert(0, ".../scripts")` broke child processes.** A spawned
+  process inherited `scripts/` ahead of `src/`, so `import cshcli` resolved to
+  `scripts/cshcli.py` and all eleven race processes died with exit code 1. The
+  tests append instead of insert now, and a test keeps it that way.
+- **`install_hooks.py` failed in a linked worktree.** There `.git` is a file,
+  not a directory, so the installer raised `FileExistsError` and **the hook was
+  never installed — the guard stopped blocking commits**. It resolves the shared
+  hooks directory with `git rev-parse --git-common-dir` now.
+- `RemoteStore.connect()` opened a new connection on every call, leaking one per
+  health check. It is idempotent now.
+- The concurrency test seeded its project in SQLite and then raced against
+  PostgreSQL, so the foreign key could never have existed. It seeds in
+  PostgreSQL now. Two tests the audit agent's worktree had and `main` did not —
+  the installed hook really blocking a commit, and the linked worktree case —
+  are back.
+
+### Verified, with the evidence
+- PostgreSQL 16.2 on Windows, no Docker and no WSL: nine tables and the fence
+  sequence.
+- Eleven independent processes race `file:src` and `file:src/a.py`: exactly one
+  wins, and the database holds exactly one lease.
+- `pg_dump` and `pg_restore` into an empty database, counts compared per table,
+  a restore over a populated database refused, and the fence never rewound.
+- `serve --remote` answers `/healthz` over TLS with `database: postgresql`;
+  plain HTTP on the same port is refused, and a client that does not trust the
+  certificate is rejected at the handshake.
+
+**Still not verified:** eleven *machines* rather than eleven processes, a second
+machine, a public trust chain — the certificate is self-signed — and a restore
+performed while another machine serves traffic. `RemoteStore.verification()`
+keeps answering `unverified` and `assert_production_ready()` keeps refusing, on
+purpose.
 
 ## [0.8.0] - 2026-10-16
 

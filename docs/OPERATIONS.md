@@ -9,16 +9,36 @@ real user near it.
 | --- | --- |
 | Sessions, expiry and revocation | Verified locally |
 | Mediated writes and the publication gate | Verified locally |
-| PostgreSQL storage | **Not verified.** No server has been run |
-| Eleven concurrent processes against a real database | **Not verified.** The test exists and skips |
-| HTTPS deployment, private network, restore drill | **Not verified.** No deployment has been made |
+| PostgreSQL storage | **Verified** against a real server: 16.2, nine tables, migration applied and the schema checked afterwards |
+| Eleven concurrent processes against a real database | **Verified.** The test runs, and exactly one of eleven processes wins |
+| Restore into an empty database | **Verified** with `pg_dump` and `pg_restore`: row counts match, restoring over a populated database is refused, and the fence never goes backwards |
+| HTTPS | **Verified on loopback** with a self-signed certificate: the server starts, answers `/healthz` over TLS and refuses plain HTTP |
+| Two machines, two accounts | **Not verified.** That needs a second machine |
+| Public trust chain | **Not verified.** The certificate is self-signed and a client has to trust it explicitly |
 
-`RemoteStore.verification()` returns this same answer at runtime, and
-`RemoteStore.assert_production_ready()` refuses to serve traffic while it says
-`unverified`. The point is not ceremony: the plan's acceptance criterion for
-the distributed version is that it does not advertise guarantees that have not
-passed their tests, and the cheapest way to keep that promise is to make the
-code unable to break it silently.
+`RemoteStore.verification()` still answers `unverified`, because the criterion
+it encodes — eleven *machines* — has not been met. `assert_production_ready()`
+keeps refusing, and that is deliberate: proving that a row lock works is not the
+same as proving the service is safe to expose.
+
+## Running a real PostgreSQL without Docker
+
+This machine has no Docker and no WSL distribution. `pip install pgserver`
+brings the PostgreSQL 16.2 binaries, which is enough to run a real cluster:
+
+```
+pip install pgserver
+python scripts/postgres_local.py start
+```
+
+It creates a cluster under `~/cshcli-pg/cluster`, listens on `127.0.0.1:55432`
+and prints the DSN. `stop`, `dsn` and `destroy` do the obvious things. The
+package is **infrastructure, not a dependency**: the pilot and the client stay
+dependency-free.
+
+`scripts/postgres_local.py` writes subprocess output to files instead of pipes.
+On Windows the server process inherits an open pipe and the reader never
+returns, which is what made an early version of the helper appear to hang.
 
 ## Install
 
@@ -43,17 +63,48 @@ Set the password from your environment, never from a file in the repository.
 Apply the schema once:
 
 ```
-psql "$CSHCLI_REMOTE_DSN" -f migrations/001_remote.sql
+python scripts/migrate.py
 ```
 
-Two choices in that file are not portable and must not be "simplified":
+It takes `CSHCLI_REMOTE_DSN`, applies every `migrations/*.sql` that is not a
+rollback, and then **checks that the nine tables are really there**. A file
+whose text contains `DROP` is refused outright: the migration and its rollback
+are separate files on purpose, and mixing them is how a deploy ends up with no
+schema at all.
+
+Three choices in `migrations/001_remote.sql` are not portable and must not be
+"simplified":
 
 - **Fences come from a sequence.** A per-row counter can be rewound by a
   restore, handing an old holder a fence that still looks current.
 - **Acquisition locks the project row.** Resources that overlap by prefix can
-  sit in different rows, so checking only colliding rows does not serialise
-  the decision. `SELECT id FROM projects WHERE id = %s FOR UPDATE` makes every
+  sit in different rows, so checking only colliding rows does not serialise the
+  decision. `SELECT id FROM projects WHERE id = %s FOR UPDATE` makes every
   acquisition in a project one at a time.
+- **Timestamps are `DOUBLE PRECISION`, never `REAL`.** `REAL` in PostgreSQL is
+  `float4`, which keeps seven significant digits. A Unix instant in this
+  century needs thirteen, so a lease expiring in 60 seconds was rounded to the
+  nearest 128 seconds and stayed alive for minutes. SQLite's `REAL` is a
+  double, which is why the pilot never saw it.
+
+## Serving over TLS
+
+```
+python scripts/tls_certificate.py ~/cshcli-tls
+$env:CSHCLI_REMOTE_DSN = "postgresql://cshcli@127.0.0.1:55432/cshcli"
+$env:CSHCLI_TLS_CERT  = "$HOME/cshcli-tls/cert.pem"
+$env:CSHCLI_TLS_KEY   = "$HOME/cshcli-tls/key.pem"
+python scripts/cshcli.py serve --remote --port 55440
+```
+
+It binds, wraps the socket in TLS and answers `/healthz` with the real database
+state. Plain HTTP on the same port is refused, and a client that does not trust
+the certificate is rejected at the handshake.
+
+**What this is not.** The certificate is self-signed and lives 30 days. A
+browser or another machine will not trust it without being told to. Before
+anyone outside this machine connects, replace it with one from a real
+authority, or terminate TLS in front of the service.
 
 ## Before inviting anyone
 

@@ -1,6 +1,6 @@
 # Verified status of CSHCLI
 
-Date: 16 October 2026. Version **0.8.0**, built locally with `dist/SHA256SUMS` but not published or signed.
+Date: 16 October 2026. Version **0.9.0**, built locally with `dist/SHA256SUMS` but not published or signed.
 Current priority: the [online plan](PLAN-ONLINE.md), whose first three steps
 can be done here. The product plan lives in
 [the main document](superpowers/plans/2026-10-14-cshcli.md).
@@ -14,7 +14,7 @@ says so and the reason is in [OPERATIONS.md](OPERATIONS.md),
 
 | Capability | Observed status |
 | --- | --- |
-| Runnable CLI from source | Help and 0.8.0 version verified |
+| Runnable CLI from source | Help and 0.9.0 version verified |
 | Conversational entry point | `cshcli` on its own opens a chat loop when the session is ready, and runs the first-run menu when it is not. Each turn carries the previous ones, capped at 20; the first question also carries the project's shared memory, capped at 8000 characters, and an index of the folder the CLI was opened in, capped at 4000 characters and reporting how many files were left out. `/buscar <texto>` finds where something lives and `/ver <ruta>` reads one file into the conversation, both through the same `Workspace` resolver the mediated runner uses. `/limpiar` clears, `/salir`, `/quit` and Ctrl-D leave. A provider error prints and the loop continues. `cshcli chat "text"` stays a single query. Request bodies per provider are tested; **no provider has been contacted** |
 | What the chat can read | The index lists what fits the budget, README, `docs/`, `src/` and `tests/` first, and skips `.git`, `__pycache__`, `node_modules`, `dist` and the usual binary suffixes. `/ver` refuses absolute paths, `..`, Git metadata, symbolic links, Windows junctions and hard links, and refuses a file that is not text. **The chat reads; it executes nothing** |
 | Finding things | `/buscar <texto>` returns `ruta:línea: texto`, ignores case, visits exactly the files the index lists, caps the answer and reports the hits it left out. A query with no hits prints that and **does not call the provider**, because the answer is already known locally. Symbolic links and junctions are never opened and binaries are skipped |
@@ -36,17 +36,17 @@ says so and the reason is in [OPERATIONS.md](OPERATIONS.md),
 | Isolated workspace | Per-run git worktree; refuses traversal, symlinks and Windows junctions |
 | Mediated runner (6C) | `Runner` validates the lease immediately before every write, stops on heartbeat loss, and exposes no command execution |
 | Sandbox | **Not a sandbox.** No CPU, memory, process or network limits. Arbitrary execution stays unimplemented by design |
-| Cross-machine service | **Not usable.** `cshcli serve --remote` checks the configuration and refuses to start without TLS and a PostgreSQL DSN, but **no server has been run**; see [OPERATIONS.md](OPERATIONS.md) |
+| Cross-machine service | **Serves over TLS against a real PostgreSQL.** `cshcli serve --remote` binds, wraps the socket and answers `/healthz` with the live database state; plain HTTP on the same port is refused and a client that does not trust the certificate is rejected at the handshake. The certificate is **self-signed**: the TLS path is proven, a public trust chain is not |
 | Automatic Git integration | `IntegrationQueue` applies a patch in a dedicated worktree, recomputes the base, runs configured checks on the composed result and advances the branch only through a compare-and-swap. The local HTTP routes can submit, list, read and process entries. Processing fails closed unless `CSHCLI_INTEGRATION_CHECK` is configured. It is **not wired to the runner or a remote worker yet** |
 | Usage and budgets (11) | `Usage.record` with `Decimal`, currency, price date and unit; unknown costs stay `null` and are excluded from totals rather than zeroed. `authorize_run` never invents an estimate and refuses when usage is incomplete. Audit export states that retention is unconfigured |
 | Chaos drills (11) | **Local drills done.** Stopping the coordinator leaves a running task running, not silently finished; a dead agent's lease expires and a second agent takes the resource; the stale holder cannot renew or release the new lease; state written by one process is read by another; an aborted batch leaves nothing behind; a re-run of an interrupted deploy does not repeat the effect |
-| Restore (11) | **Drill done on the pilot database.** Backup, restore into an empty database, fence never goes backwards, a second restore over a populated target is refused. A **PostgreSQL** restore is still not proven: no server here |
+| Restore (11) | **Proven on a real PostgreSQL.** `pg_dump` and `pg_restore` into an empty database, row counts compared per table, a restore over a populated database refused, and the fence sequence never observed going backwards. **Not verified:** a restore on a second machine while the first serves traffic |
 | Release (11) | Wheel builds, `SHA256SUMS` written, installed copy verified. **Not signed, not published** |
 | Deployment publish and rollback | Coordination complete, and the four acceptance checks run against a separate process and a real health socket. **No provider is configured and nothing has been published anywhere** |
 | Native direct OAuth | `ProviderAuth` implements PKCE, one-use state, exact loopback redirect and a local store, behind a review registry that is **empty on purpose**. No provider is eligible |
 | Personal data guard | Pre-commit hook and a **required** CI check; refuses personal emails, private relay addresses, user paths and a non-noreply identity. Reads the staged index and fails closed |
 | Sessions and revocation (7) | `Identity` issues expiring sessions stored as HMAC hashes, and `authorization_generation` refuses work queued before a revocation |
-| Remote store (7) | PostgreSQL schema, row-locked acquisition and a refusal to serve while unverified. **No server has been run**; the concurrency test skips with its reason |
+| Remote store (7) | PostgreSQL 16.2 running for real, schema applied and verified, row-locked acquisition, and a refusal to serve while unverified. **Eleven independent processes race for overlapping resources and exactly one wins.** The refusal stays because the criterion it encodes is eleven *machines*, not eleven processes |
 | Built web | **Not published**, by decision of the owner. Ignored by git with the reason written next to it |
 | Task DAG (8B) | `TaskService` with seven states, cycle refusal on create and modify, and `claim` that acquires leases in the same transaction |
 | Integration queue (8B) | Serialised per project, dedicated worktree, recomputed base, configured checks on the composed result, and a compare-and-swap that only advances the branch if it did not move. Local HTTP routes expose submit, list, read and process; processing refuses to run without configured checks, and only a patch the publication gate accepted can be queued |
@@ -58,10 +58,11 @@ Observed environment: Windows with CPython 3.12.14. The interpreter path is
 machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests`
-returned **622 passing tests in 366.718 seconds**, with 8 skipped: five
-symbolic link cases on a host that does not grant the privilege, two PostgreSQL
-cases that need a real server which does not exist on this machine, and one
-POSIX file permission case that does not apply on Windows. The Windows junction
+returned **664 passing tests in 362.833 seconds**, with 26 skipped. Every skip
+says why: five symbolic link cases on a host that does not grant the
+privilege, one POSIX file permission case that does not apply on Windows, and
+twenty that need `CSHCLI_REMOTE_DSN` pointing at a real PostgreSQL. Those twenty
+**were run** against PostgreSQL 16.2 here, and passed. The Windows junction
 cases run. Concurrent tests use eleven synchronised threads and, for
 deployments, eleven processes against one environment; they do not yet
 represent eleven distributed machines.
@@ -169,10 +170,10 @@ Two decisions about what the chat carries, each with a reason:
 | First run that needs no instructions, with a local key store | Done. `cshcli start` is a two-option menu that performs the setup, and the coordinator is implicit, so no server is started |
 | Document the install command with its three caveats | Done |
 | `cshcli update` that reports first and installs on consent with a checksum | Done locally, with network doubles. Never exercised against a published release |
-| `cshcli serve --remote` over HTTPS with PostgreSQL | **No.** Validates and refuses; no server here |
-| Standing the remote coordinator up and proving real concurrency | **No.** No PostgreSQL |
-| Chaos drills and a proven restore | Partly. Local chaos drills and a real SQLite restore pass; PostgreSQL restore does not |
-| Signing and publishing the release | **No.** No credentials |
+| `cshcli serve --remote` over HTTPS with PostgreSQL | **Done here.** It binds, serves `/healthz` over TLS against a live PostgreSQL and refuses plain HTTP. The certificate is self-signed, so this proves the path, not public trust |
+| Standing the remote coordinator up and proving real concurrency | **Done on one machine.** Eleven independent processes race and one wins. Eleven *machines* still need a second one |
+| Chaos drills and a proven restore | **Done.** `pg_dump` and `pg_restore` into an empty database, counts compared, restore over a populated database refused, fence never rewound. A restore on a second machine is still unproven |
+| Signing and publishing the release | **Still no.** The artefact builds and has a checksum, but there is no signing identity. That is the owner's to create |
 | Requiring a queue entry to come from an accepted patch | Done. The queue refuses a commit with no accepted-patch record and one accepted with a different base, and rechecks acceptance immediately before the merge |
 | The chat starting from the folder it was opened in | Done. The first question carries a capped index of the files, `/buscar <texto>` finds where something lives, and `/ver <ruta>` reads one file into the conversation, all through `Workspace`. Tested through the real CLI entry point |
 
