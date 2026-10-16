@@ -4,6 +4,58 @@ Resumen del estado real, verificado contra `origin/main` el 16 de octubre
 de 2026. Este documento reemplaza a la memoria de sesión para que cualquier
 agente pueda orientarse sin releer la conversación.
 
+## Checkpoint autoritativo para reanudar
+
+Este bloque prevalece sobre cualquier fotografía histórica contradictoria que
+permanezca más abajo. No reinterpretar los estados antiguos como el estado
+actual.
+
+- `origin/main` está en `66890f7`, squash del **PR #75**. Es la versión
+  **0.9.0** y tiene **69 commits**. El PR pasó **14 checks**.
+- La rama local activa es `fix/guard-rechaza-por-nombre`. Solo hay un worktree
+  registrado, el principal. No hay agentes trabajando ni otro worktree que
+  rescatar.
+- Hay siete cambios preparados y todavía **no hay commit, push ni PR** para
+  esta rama: `scripts/guard_secrets.py`, `tests/test_guard_names.py`,
+  `README.md`, `CHANGELOG.md`, `docs/CONTEXT.md`, `docs/STATUS.md` y
+  `docs/USAGE.md`.
+- El guard ya rechaza credenciales por nombre antes de intentar leerlas. Cubre
+  los nombres y sufijos sensibles que el chat también rechaza, conserva
+  `.env.example` y evita el falso positivo `credential_manager.py`.
+- `tests/test_guard_names.py` prueba nombres, sufijos, un repositorio Git real,
+  un almacén binario y la concordancia entre el guard y el chat.
+- La comprobación real rechazó los cuatro nombres sensibles ensayados y dejó
+  pasar un archivo ordinario. No se registraron valores de credenciales.
+- La última suite completa terminó con **700 pruebas verdes y 26 omitidas con
+  motivo en 352.249 s**. Las 20 pruebas que dependen de PostgreSQL también se
+  ejecutaron contra PostgreSQL 16.2 real y pasaron.
+- `tests/test_workflow.py` todavía contiene tres líneas de comentarios
+  explicativos sobre runtimes retirados. Deben eliminarse antes del commit para
+  cumplir la regla del propietario de cero comentarios y docstrings
+  explicativos. No se deben eliminar las constantes ni debilitar las pruebas.
+- Después de esa limpieza hay que ejecutar
+  `python -m unittest tests.test_workflow tests.test_guard_names tests.test_guard`,
+  la auditoría de comentarios/docstrings y `python scripts/guard_secrets.py` en
+  modo staged. Después: commit, push, PR, CI verde y squash a `main`, sin
+  force-push.
+- Mensaje de commit previsto: `fix(guard): rechazar credenciales por nombre y
+  mantener las dos listas alineadas`.
+
+El único bloqueo que requiere una decisión del propietario es la clave privada
+de firma. `scripts/release.py`, `minisign` y `CSHCLI_SIGNING_KEY` están
+instalados, automatizados y probados con una clave temporal ya eliminada. No se
+debe crear una identidad criptográfica permanente en nombre del propietario.
+
+Continúan declaradamente sin verificar: once máquinas reales en lugar de once
+procesos, una segunda máquina, una cadena TLS pública y un restore mientras otra
+máquina sirve tráfico. Por eso `RemoteStore.verification()` sigue devolviendo
+`unverified` y `assert_production_ready()` sigue negándose correctamente.
+
+Decisiones que no deben reabrirse al retomar: el chat permanece de solo lectura;
+`cshcli start` conserva el menú de dos ramas; `cshcli` abre el chat; el usuario
+no arranca un servidor manualmente; `web/` no se publica; y nunca se exponen ni
+se copian claves, credenciales, direcciones privadas o muestras de secretos.
+
 ## Última tranche: el chat conoce el proyecto — 0.7.0 y 0.8.0
 
 Dos PRs y dos squashes: **PR #65** → `ce65531` con el índice del proyecto y
@@ -152,6 +204,32 @@ fallo real de ruido de la maquina no vale lo que dice**.
   arbol de procesos, el test falla con *"el hijo sobrevivio al timeout de su
   padre"*. Un test que siempre pasa noHabria detectado nada.
 
+## El guard dejaba pasar credenciales que el chat ya rechazaba
+
+Las dos listas de secretos erans listas distintas, y ya habian divergido. El chat
+rechazaba `id_rsa` y el guard lo dejaba pasar si el fichero no tenia un marcador
+legible. Comprobado sobre un repositorio de verdad:
+
+```
+guard: sin datos personales
+```
+
+con dentro un `.netrc` con contrasena, un `.npmrc` con un token, un `id_rsa` sin
+clave real y un `wallet.jks` binario. Los cuatro se podian commitear.
+
+El guard miraba **contenido**; el chat miraba **nombre**. Los dos criterios valen
+y ninguno sustituye al otro: el guard ve un token en un fichero de nombre
+inocuo, y el nombre ve un secreto en un formato que los patrones no reconocen.
+
+Ahora el guard tiene las dos capas. `is_credential_file` rechaza por nombre
+antes de leer nada, y `tests/test_guard_names.py` incluye una prueba que exige
+**que el guard y el chat reconozcan lo mismo**, para que las dos listas no vuelvan
+a separarse.
+
+Un falso positivo que hubo que arreglar de paso: filtrar por la palabra
+"credential" marcaba `credential_manager.py` como secreto. Los nombres se
+reconocen por forma, no por contenido de la palabra.
+
 ## El indice del chat anunciaaba las credenciales
 
 Un `.env` con la clave de API, un `credentials.json`, un `server.key`: todo eso
@@ -281,7 +359,7 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | Módulo Python | `cshcli`, 24 módulos más `__init__` y `__main__`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 67, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 691 verdes; 26 omitidas con motivo: 20 necesitan `CSHCLI_REMOTE_DSN` y **se ejecutaron** contra PostgreSQL 16.2 |
+| Pruebas | 700 verdes; 26 omitidas con motivo: 20 necesitan `CSHCLI_REMOTE_DSN` y **se ejecutaron** contra PostgreSQL 16.2 |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es

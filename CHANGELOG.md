@@ -32,6 +32,12 @@ coordinator answers over TLS.
 - `tests/test_remote_server.py`, `tests/test_restore_postgres.py`,
   `tests/test_postgres_local.py`, `tests/test_migrate.py`,
   `tests/test_secret_files.py`.
+- **The guard refuses credential files by name, not only by content.** It
+  looked inside the file and missed a `.netrc` with a password, an
+  `.npmrc` with a token, an `id_rsa` without a readable marker and a binary
+  keystore: all four could be committed. A test now requires the guard and
+  the chat to recognise the same names, so the two lists cannot drift
+  apart again.
 - **The chat index no longer announces or reads credentials.** `.env`,
   `.netrc`, `.npmrc`, `.pypirc`, `credentials.json`, `service-account*`,
   `id_rsa` and the `.pem`, `.key`, `.p12`, `.pfx`, `.crt`, `.keystore`
