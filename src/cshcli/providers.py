@@ -75,7 +75,7 @@ def login(provider: str) -> int:
         raise DomainError(400, "cli_start_failed", "No se pudo iniciar el CLI oficial.") from None
 
 
-def chat(provider: str, model: str | None, prompt: str) -> str:
+def chat(provider: str, model: str | None, prompt: str, history=None) -> str:
     if provider not in _API_KEYS and provider not in _BINARIES:
         raise DomainError(400, "provider_unknown", "Proveedor no compatible.")
     if not isinstance(prompt, str) or not prompt.strip():
@@ -90,7 +90,7 @@ def chat(provider: str, model: str | None, prompt: str) -> str:
             raise DomainError(400, "api_key_missing", f"Configura {_API_KEYS[provider]} en tu entorno local.")
         if "\r" in key or "\n" in key:
             raise DomainError(400, "api_key_invalid", "La API key contiene caracteres no válidos.")
-        return _redact(_api_chat(provider, model, prompt, key))
+        return _redact(_api_chat(provider, model, prompt, key, history))
     if provider == "gemini-cli":
         raise DomainError(400, "text_mode_unavailable",
                           "El chat Gemini CLI está pendiente de aislamiento verificable. Usa google con GEMINI_API_KEY y --model.")
@@ -129,10 +129,29 @@ def _request(url: str, payload: dict, headers: dict) -> dict:
     return parsed
 
 
-def _api_chat(provider: str, model: str, prompt: str, key: str) -> str:
+def _messages(history, prompt: str) -> list[dict]:
+    turns = []
+    for item in history or []:
+        if not isinstance(item, dict):
+            continue
+        role, content = item.get("role"), item.get("content")
+        if role in {"user", "assistant"} and isinstance(content, str) and content.strip():
+            turns.append({"role": role, "content": content})
+    turns.append({"role": "user", "content": prompt})
+    return turns
+
+
+def _api_chat(provider: str, model: str, prompt: str, key: str, history=None) -> str:
+    turns = _messages(history, prompt)
+    carried = len(turns) > 1
     if provider == "openai":
-        response = _request("https://api.openai.com/v1/responses",
-                            {"model": model, "input": prompt, "store": False},
+        body = ({"model": model, "input": prompt, "store": False} if not carried else
+                {"model": model, "store": False, "input": [
+                    {"role": turn["role"],
+                     "content": [{"type": "output_text" if turn["role"] == "assistant"
+                                  else "input_text", "text": turn["content"]}]}
+                    for turn in turns]})
+        response = _request("https://api.openai.com/v1/responses", body,
                             {"Authorization": f"Bearer {key}"})
         if response.get("status") != "completed":
             raise DomainError(502, "provider_response_incomplete", "El proveedor no completó la respuesta.")
@@ -142,7 +161,7 @@ def _api_chat(provider: str, model: str, prompt: str, key: str) -> str:
         text = _text(blocks, "output_text")
     elif provider == "anthropic":
         response = _request("https://api.anthropic.com/v1/messages",
-                            {"model": model, "max_tokens": 4096, "messages": [{"role": "user", "content": prompt}]},
+                            {"model": model, "max_tokens": 4096, "messages": turns},
                             {"x-api-key": key, "anthropic-version": "2023-06-01"})
         if response.get("stop_reason") != "end_turn":
             raise DomainError(502, "provider_response_incomplete", "El proveedor no completó una respuesta de texto.")
@@ -150,7 +169,8 @@ def _api_chat(provider: str, model: str, prompt: str, key: str) -> str:
     elif provider == "google":
         model_name = model.removeprefix("models/")
         response = _request("https://generativelanguage.googleapis.com/v1beta/models/" + quote(model_name, safe="") + ":generateContent",
-                            {"contents": [{"role": "user", "parts": [{"text": prompt}]}]},
+                            {"contents": [{"role": "model" if turn["role"] == "assistant" else "user",
+                                           "parts": [{"text": turn["content"]}]} for turn in turns]},
                             {"x-goog-api-key": key})
         candidates = _list(response.get("candidates"))
         candidate = candidates[0] if candidates and isinstance(candidates[0], dict) else {}
@@ -160,7 +180,7 @@ def _api_chat(provider: str, model: str, prompt: str, key: str) -> str:
         text = _text(_list(content.get("parts")) if isinstance(content, dict) else [])
     else:
         response = _request(_MINIMAX_BASE + "/chat/completions",
-                            {"model": model, "messages": [{"role": "user", "content": prompt}],
+                            {"model": model, "messages": turns,
                              "max_completion_tokens": 4096},
                             {"Authorization": f"Bearer {key}"})
         choices = _list(response.get("choices"))

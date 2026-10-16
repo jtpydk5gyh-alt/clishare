@@ -192,9 +192,10 @@ def _provider_setup(session, keyring, reader, secret, out):
     session.remember(provider=provider)
 
 
-def run_loop(provider, model, ask, reader=None, out=None):
+def run_loop(provider, model, ask, reader=None, out=None, keep=20):
     reader = reader or input
     out = out or print
+    history = []
     while True:
         try:
             line = reader("> ")
@@ -206,10 +207,20 @@ def run_loop(provider, model, ask, reader=None, out=None):
             continue
         if line in {"/exit", "/quit", "/salir"}:
             return 0
+        if line in {"/clear", "/limpiar"}:
+            history.clear()
+            out("  Conversación borrada.")
+            continue
         try:
-            out(ask(provider, model, line))
+            answer = ask(provider, model, line, list(history))
         except DomainError as error:
             out(f"[{error.code}] {error}")
+            continue
+        out(answer)
+        history.append({"role": "user", "content": line})
+        history.append({"role": "assistant", "content": answer})
+        if keep and len(history) > keep:
+            del history[:-keep]
 
 
 def run_wizard(client, session, keyring, reader=None, secret=None, out=None):

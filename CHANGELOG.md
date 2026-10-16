@@ -7,6 +7,19 @@ once it leaves alpha.
 
 ## [Unreleased]
 
+### Added
+- The chat loop carries the conversation: each turn sends the previous turns,
+  capped at the last 20 so it cannot grow without bound. `/limpiar` clears it.
+- `providers.chat` and `_api_chat` accept an optional `history`, and the request
+  body is built per provider: `messages` for Anthropic and MiniMax, `contents`
+  with `role: model` for Google, and typed `input` blocks for OpenAI. An
+  unusable history entry is dropped rather than sent.
+- A turn that failed is **not** remembered, so a provider error does not leave
+  a half-turn in the next request.
+
+**Not verified:** no provider has been contacted. The request body per provider
+is covered by tests that capture what would be sent, not by a live API call.
+
 ## [0.5.0] - 2026-10-16
 
 `cshcli` on its own now opens a chat.
@@ -117,7 +130,7 @@ what to run next. It is now one command that does the work.
   ever prints a key, and a test checks that asking about one provider does not
   reveal another's.
 - Recorded where the project actually stands: version 0.3.0, 52 commits on
-  `origin/main`, 548 passing tests, and a table that says for each remaining
+  `origin/main`, 558 passing tests, and a table that says for each remaining
   item whether it can be done on this machine. The document states what cannot
   be checked instead of implying it.
 - `docs/STATUS.md` gained a "What is verified, and what is not" heading, a
@@ -267,7 +280,7 @@ what to run next. It is now one command that does the work.
   leaving `main` with a red suite.
 
 ### Verification
-- **548 tests pass**, with 5 explicit skips: two symbolic-link cases, two real
+- **558 tests pass**, with 5 explicit skips: two symbolic-link cases, two real
   PostgreSQL cases, and one POSIX permission case on Windows.
 - **CI is active** and green on Windows and Linux with Python 3.11, 3.12 and
   3.13.

@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import tempfile
 import threading
@@ -6,6 +7,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from cshcli import providers
 from cshcli.cli import main
 from cshcli.client import Client
 from cshcli.errors import DomainError
@@ -232,19 +234,46 @@ class LoopTests(unittest.TestCase):
         self.output = io.StringIO()
         self.seen = []
 
-    def ask(self, provider, model, prompt):
-        self.seen.append((provider, model, prompt))
+    def ask(self, provider, model, prompt, history):
+        self.seen.append((prompt, list(history)))
         return f"respuesta a {prompt}"
 
-    def failing(self, provider, model, prompt):
+    def failing(self, provider, model, prompt, history):
         raise DomainError(401, "api_key_missing", "Configura la clave.")
 
     def test_a_line_is_sent_and_the_answer_printed(self):
         code = run_loop("openai", "gpt-4o-mini", self.ask,
                         reader=Script(["hola"]), out=self.output.write)
         self.assertEqual(code, 0)
-        self.assertEqual(self.seen, [("openai", "gpt-4o-mini", "hola")])
+        self.assertEqual(self.seen[0], ("hola", []))
         self.assertIn("respuesta a hola", self.output.getvalue())
+
+    def test_the_next_turn_carries_the_first_one(self):
+        run_loop("openai", "m", self.ask,
+                 reader=Script(["uno", "dos", "/salir"]), out=self.output.write)
+        self.assertEqual(self.seen[1][0], "dos")
+        self.assertEqual(self.seen[1][1], [
+            {"role": "user", "content": "uno"},
+            {"role": "assistant", "content": "respuesta a uno"}])
+
+    def test_history_is_capped(self):
+        run_loop("openai", "m", self.ask, reader=Script(["a", "b", "c", "/salir"]),
+                 out=self.output.write, keep=2)
+        self.assertEqual(self.seen[-1][1], [
+            {"role": "user", "content": "b"},
+            {"role": "assistant", "content": "respuesta a b"}])
+
+    def test_a_failed_turn_is_not_remembered(self):
+        run_loop("openai", "m", self.failing,
+                 reader=Script(["uno", "dos", "/salir"]), out=self.output.write)
+        self.assertEqual(self.seen, [])
+
+    def test_limpiar_clears_the_conversation(self):
+        out = io.StringIO()
+        run_loop("openai", "m", self.ask, reader=Script(["uno", "/limpiar", "dos", "/salir"]),
+                 out=out.write)
+        self.assertIn("Conversación borrada.", out.getvalue())
+        self.assertEqual(self.seen[1][1], [])
 
     def test_slash_exit_leaves_the_loop(self):
         code = run_loop("openai", "m", self.ask,
@@ -256,7 +285,7 @@ class LoopTests(unittest.TestCase):
         code = run_loop("openai", "m", self.ask,
                         reader=Script(["", "   ", "hola", "/quit"]), out=self.output.write)
         self.assertEqual(code, 0)
-        self.assertEqual([item[2] for item in self.seen], ["hola"])
+        self.assertEqual([item[0] for item in self.seen], ["hola"])
 
     def test_end_of_input_leaves_without_an_answer(self):
         code = run_loop("openai", "m", self.ask,
@@ -269,6 +298,59 @@ class LoopTests(unittest.TestCase):
                         reader=Script(["uno", "dos", "/salir"]), out=self.output.write)
         self.assertEqual(code, 0)
         self.assertEqual(self.output.getvalue().count("[api_key_missing]"), 2)
+
+
+class ProviderHistoryTests(unittest.TestCase):
+    def setUp(self):
+        self.sent = {}
+
+    def bodies(self, provider, history=None, prompt="ahora"):
+        original = providers._request
+        providers._request = lambda url, body, headers, p=provider: (
+            self.sent.__setitem__(p, body) or {"ok": True})
+        self.addCleanup(lambda: setattr(providers, "_request", original))
+        with mock.patch.dict(os.environ, {providers._API_KEYS[provider]: "sk-test"}):
+            try:
+                providers._api_chat(provider, "model", prompt, "sk-test", history)
+            except Exception:
+                pass
+        return self.sent[provider]
+
+    def test_anthropic_sends_the_whole_conversation(self):
+        body = self.bodies("anthropic", [{"role": "user", "content": "hola"},
+                                          {"role": "assistant", "content": "buenas"}])
+        self.assertEqual(body["messages"], [
+            {"role": "user", "content": "hola"},
+            {"role": "assistant", "content": "buenas"},
+            {"role": "user", "content": "ahora"}])
+
+    def test_google_names_the_assistant_role_model(self):
+        body = self.bodies("google", [{"role": "user", "content": "hola"},
+                                      {"role": "assistant", "content": "buenas"}])
+        self.assertEqual([item["role"] for item in body["contents"]], ["user", "model", "user"])
+
+    def test_minimax_uses_the_openai_shape(self):
+        body = self.bodies("minimax", [{"role": "user", "content": "hola"}])
+        self.assertEqual(body["messages"], [
+            {"role": "user", "content": "hola"}, {"role": "user", "content": "ahora"}])
+
+    def test_openai_input_carries_typed_blocks(self):
+        body = self.bodies("openai", [{"role": "user", "content": "hola"},
+                                      {"role": "assistant", "content": "buenas"}])
+        kinds = [block["type"] for item in body["input"] for block in item["content"]]
+        self.assertEqual(kinds, ["input_text", "output_text", "input_text"])
+
+    def test_openai_keeps_its_plain_prompt_without_a_conversation(self):
+        body = self.bodies("openai")
+        self.assertEqual(body["input"], "ahora")
+
+    def test_an_unusable_history_item_is_dropped(self):
+        body = self.bodies("anthropic", [{"role": "system", "content": "x"},
+                                          {"role": "user", "content": ""},
+                                          "not a dict",
+                                          {"role": "user", "content": "hola"}])
+        self.assertEqual(body["messages"], [{"role": "user", "content": "hola"},
+                                            {"role": "user", "content": "ahora"}])
 
 
 class CliStartTests(unittest.TestCase):
@@ -327,7 +409,7 @@ class CliStartTests(unittest.TestCase):
              mock.patch("sys.stdout", self.output):
             code = main([])
         self.assertEqual(code, 0)
-        self.assertEqual(chat.call_args[0], ("openai", None, "hola"))
+        self.assertEqual(chat.call_args[0], ("openai", None, "hola", []))
         printed = self.output.getvalue()
         self.assertIn("ana · equipo · openai", printed)
         self.assertIn("respuesta", printed)

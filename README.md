@@ -94,9 +94,12 @@ token — and `cshcli` on its own opens a chat:
 > _
 ```
 
-`/salir`, `/quit` or Ctrl-D leaves the loop. `cshcli chat --provider openai
---model gpt-4o-mini "one question"` stays a single query. The model identifier
-is explicit for API providers on purpose: the tool does not guess one.
+`/limpiar` clears the conversation, `/salir`, `/quit` or Ctrl-D leaves. Each
+turn carries the previous ones, capped at the last 20. `cshcli chat --provider
+openai --model gpt-4o-mini "one question"` stays a single query. The model
+identifier is explicit for API providers on purpose: the tool does not guess
+one. **No provider has been contacted**: the request body per provider is
+covered by tests, not by a live API.
 
 Every decision lives in `.cshcli/coordinator.sqlite3`, so the coordinator that
 made it does not need to keep running. That folder is ignored by Git. The pilot
@@ -328,7 +331,7 @@ python scripts/cshcli.py --help
 python scripts/guard_secrets.py --all
 ```
 
-The current Windows run passes 548 tests with 5 explicit skips for unavailable
+The current Windows run passes 558 tests with 5 explicit skips for unavailable
 POSIX symbolic-link/file-permission guarantees and real PostgreSQL. The tests
 use real SQLite, local HTTP, Git, and provider fixtures. The synchronised
 races pit eleven agents from two people against the same resource, memory
@@ -354,15 +357,13 @@ means and for the limits CI does not yet cover.
 
 ## Next deliveries
 
-1. **Conversation that carries context across turns.** The loop sends each line
-   as an independent query today.
-2. **A remote coordinator.** `cshcli serve --remote` over HTTPS with PostgreSQL
+1. **A remote coordinator.** `cshcli serve --remote` over HTTPS with PostgreSQL
    on a private network. **Not available yet and not claimed to be.**
-3. A real PostgreSQL concurrency and restore drill, plus deployment against a
+2. A real PostgreSQL concurrency and restore drill, plus deployment against a
    real provider from more than one machine.
-4. A signed, published release whose wheel and `SHA256SUMS` URLs are exercised
+3. A signed, published release whose wheel and `SHA256SUMS` URLs are exercised
    end to end by `cshcli update --apply`.
-5. Windows protection for `.cshcli/keys.json` beyond ordinary file placement.
+4. Windows protection for `.cshcli/keys.json` beyond ordinary file placement.
 
 The [online plan](docs/PLAN-ONLINE.md) has the reasoning and the order. The
 [status](docs/STATUS.md) says exactly what has and has not been exercised.

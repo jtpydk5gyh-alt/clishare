@@ -39,7 +39,7 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | Módulo Python | `cshcli`, 21 módulos, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 58, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 548 verdes; 5 omitidas: 2 por symlink, 2 por no haber PostgreSQL y 1 permiso POSIX en Windows |
+| Pruebas | 558 verdes; 5 omitidas: 2 por symlink, 2 por no haber PostgreSQL y 1 permiso POSIX en Windows |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es
@@ -869,6 +869,31 @@ done | sort -u                                              # una sola línea
 git fsck --no-reflogs                                       # sin salida
 ```
 
+## El bucle recuerda la conversación
+
+El bucle de 0.5.0 mandaba cada línea como una consulta suelta. Ahora acumula los
+turnos y los envía con cada nueva línea, con un tope de **20** para que no
+crezca sin límite. `/limpiar` vacía la conversación.
+
+`providers.chat` y `_api_chat` aceptan un `history` opcional y arman el cuerpo
+según el proveedor: `messages` para Anthropic y MiniMax, `contents` con
+`role: model` para Google, y bloques `input` tipados para OpenAI. Una entrada
+de historial inservible se descarta en vez de enviarse.
+
+Dos decisiones que las pruebas obligaron a pensar:
+
+- **Un turno fallido no se recuerda.** Si la llamada falla, el par pregunta y
+  respuesta no entra al historial, para que la siguiente petición no lleve un
+  turno a medias.
+- **Sin historial, OpenAI conserva su forma anterior**, `input` como cadena.
+  La suite tenía una prueba que lo fijaba y tenía razón: cambiar la forma de
+  una petición que ya funcionaba, sin ganar nada, solo agrega riesgo. Ahora la
+  lista de bloques tipados se usa únicamente cuando hay conversación.
+
+**No se ha contactado ningún proveedor.** Los cuerpos de petición están cubiertos
+por pruebas que capturan lo que se enviaría, no por una llamada real. Eso está
+dicho en `README`, `USAGE`, `STATUS` y `CHANGELOG`, no escondido.
+
 ## El bucle conversacional
 
 `cshcli` a secas ahora abre un chat. Con la sesión lista imprime un cartel
@@ -885,13 +910,11 @@ solo en el subcomando.
 Si ya hay una clave guardada, el asistente **elige** ese proveedor en vez de
 preguntar cuál. Es la diferencia entre "¿qué proveedor usas?" y nada.
 
-La límite que sigue declarado: cada línea es una consulta independiente. No
-hay memoria de conversación entre turnos. Eso está anotado como pendiente en
-`README`, `USAGE` y `STATUS`, no vendido como conversación.
+El límite que quedaba: cada línea era una consulta independiente. Cerrado en
+0.5.1, con el historial que se describe arriba.
 
 `run_loop` recibe la función de consulta como parámetro, así que el bucle se
-prueba entero sin contactar a ningún proveedor: cinco casos cubren la línea
-enviada, `/salir`, líneas vacías, fin de entrada y error del proveedor.
+prueba entero sin contactar a ningún proveedor.
 
 ## La cola exige aceptación previa
 
@@ -1003,5 +1026,5 @@ La otra observación del revisor **queda cerrada**: la puerta de aceptación es
 ahora obligatoria para la cola, con comprobación al encolar y antes de integrar.
 
 Cierre reproducible de esta tanda: las 13 pruebas HTTP de la cola pasan; la
-suite completa pasa con **548 tests en 312.955 s** y 5 omisiones justificadas.
+suite completa pasa con **558 tests en 339.138 s** y 5 omisiones justificadas.
 `compileall` sobre `src`, `tests` y `scripts` termina sin salida.
