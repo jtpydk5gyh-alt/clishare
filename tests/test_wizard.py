@@ -417,6 +417,8 @@ class CliStartTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.home = Path(self.temp.name) / "home"
+        self.work = Path(self.temp.name) / "work"
+        self.work.mkdir(parents=True, exist_ok=True)
         environment = mock.patch.dict(os.environ, {
             "CSHCLI_HOME": str(self.home),
             "CSHCLI_DB": str(self.home / "coordinator.sqlite3"),
@@ -465,6 +467,7 @@ class CliStartTests(unittest.TestCase):
         with mock.patch("cshcli.cli.providers.chat",
                         return_value="respuesta") as chat, \
              mock.patch("builtins.input", side_effect=["hola", "/salir"]), \
+             mock.patch.object(Path, "cwd", return_value=self.work), \
              mock.patch("sys.stdout", self.output):
             code = main([])
         self.assertEqual(code, 0)
@@ -473,6 +476,31 @@ class CliStartTests(unittest.TestCase):
         self.assertIn("ana · equipo · openai", printed)
         self.assertIn("respuesta", printed)
         self.assertNotIn("Elige 1 o 2", printed)
+
+    def test_the_chat_receives_the_files_of_this_folder(self):
+        self.run_main(["start"], ["1", "ana", "equipo", "openai"], ["sk-test"])
+        (self.work / "notas.md").write_text("# Notas\n", encoding="utf-8", newline="\n")
+        self.output = io.StringIO()
+        with mock.patch("cshcli.cli.providers.chat", return_value="r") as chat, \
+             mock.patch("builtins.input", side_effect=["hola", "/salir"]), \
+             mock.patch.object(Path, "cwd", return_value=self.work), \
+             mock.patch("sys.stdout", self.output):
+            main([])
+        prompt = chat.call_args[0][2]
+        self.assertIn("notas.md", prompt)
+        self.assertTrue(prompt.endswith("hola"))
+
+    def test_ver_through_the_cli_puts_the_file_in_the_conversation(self):
+        self.run_main(["start"], ["1", "ana", "equipo", "openai"], ["sk-test"])
+        (self.work / "notas.md").write_text("una nota\n", encoding="utf-8", newline="\n")
+        self.output = io.StringIO()
+        with mock.patch("cshcli.cli.providers.chat", return_value="r") as chat, \
+             mock.patch("builtins.input", side_effect=["/ver notas.md", "/salir"]), \
+             mock.patch.object(Path, "cwd", return_value=self.work), \
+             mock.patch("sys.stdout", self.output):
+            main([])
+        self.assertIn("una nota", chat.call_args[0][2])
+        self.assertIn("/ver <archivo>", self.output.getvalue())
 
     def test_the_chat_receives_the_shared_memory_as_context(self):
         self.run_main(["start"], ["1", "ana", "equipo", "openai"], ["sk-test"])
