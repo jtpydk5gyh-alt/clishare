@@ -21,29 +21,30 @@ have.
 no branch is waiting, and no test is failing. Nothing below requires finishing
 half a thing.
 
-## 1. Blocked on the owner: the signing key
+## 1. Done: the release is signed (publishing is still manual)
 
-**The only item that is waiting on a person, and that person is the owner.**
+**The owner authorised the key on 17 October 2026 and it was created.** The
+private key is password-protected and lives outside the repository; the public
+key is committed at `cshcli-release.pub`, which is the only part that ever
+leaves the machine.
 
-Everything else is already installed and proved. `minisign` 0.12 is in the
-portable copy and was verified against the public key the project publishes.
-`release.py` signs by itself, checks the signature was written, refuses under
-`--require-signature`, and builds while warning when no key is present. The
-whole flow was exercised with a throwaway key that was deleted afterwards.
+`release.py` signs `SHA256SUMS` by itself, checks that the signature was
+written, and refuses under `--require-signature` when no key is available, so
+publishing unsigned is a refusal rather than a warning.
+
+Checked in both directions, because a signature that cannot detect anything is
+decoration: it verifies with the published key, a different real key is
+rejected with a key-id mismatch, and changing one byte of `SHA256SUMS`
+invalidates it.
 
 ```
-CSHCLI_SIGNING_KEY=ruta\a\tu-clave.key  python scripts/release.py
+CSHCLI_SIGNING_KEY=ruta\a\la-clave.key  python scripts/release.py
 ```
 
-**What it unblocks, in order.** A signed release. Publishing it. Then, and only
-then, `cshcli update` exercised against something real instead of a network
-double, which is the one product path in the online plan that has never run
-against a real artefact.
-
-**Why it is not decided here.** Creating a signing identity in someone's name
-without their say-so is not a call an agent should make alone. It produces a
-key pair whose private half would have to live outside every synced copy for
-the rest of the project's life.
+**What is left of it.** Publishing, which stays manual while there is one owner.
+Then, and only then, `cshcli update` exercised against something real instead of
+a network double, which is the one product path in the online plan that has
+never run against a real artefact.
 
 ## 2. Blocked on a second machine: the last four proofs
 
@@ -113,11 +114,10 @@ thing".
 
 ## Order
 
-1. The signing key, because it is one decision and it unblocks a release.
+1. Publishing the signed release, which is manual while there is one owner. It
+   unblocks `cshcli update` tested against a real artefact.
 2. A second machine, which closes the four proofs and turns the online claim in
    the README into something that can be read.
-3. The documentation debt above, whenever it is convenient; it needs no
-   infrastructure at all.
 
 Nothing else is queued. If the owner wants more work, the honest candidates are
 the sandbox and the OAuth registry, and both are decisions before they are

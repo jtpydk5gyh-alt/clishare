@@ -1,6 +1,7 @@
 # Verified status of CSHCLI
 
-Date: 16 October 2026. Version **0.9.0**, built locally with `dist/SHA256SUMS` but not published or signed.
+Date: 17 October 2026. Version **0.9.0**, built locally with `dist/SHA256SUMS` and
+**signed**; not published.
 Current priority: the [online plan](PLAN-ONLINE.md), whose first three steps
 can be done here. The product plan lives in
 [the main document](superpowers/plans/2026-10-14-cshcli.md).
@@ -41,7 +42,7 @@ says so and the reason is in [OPERATIONS.md](OPERATIONS.md),
 | Usage and budgets (11) | `Usage.record` with `Decimal`, currency, price date and unit; unknown costs stay `null` and are excluded from totals rather than zeroed. `authorize_run` never invents an estimate and refuses when usage is incomplete. Audit export states that retention is unconfigured |
 | Chaos drills (11) | **Local drills done.** Stopping the coordinator leaves a running task running, not silently finished; a dead agent's lease expires and a second agent takes the resource; the stale holder cannot renew or release the new lease; state written by one process is read by another; an aborted batch leaves nothing behind; a re-run of an interrupted deploy does not repeat the effect |
 | Restore (11) | **Proven on a real PostgreSQL.** `pg_dump` and `pg_restore` into an empty database, row counts compared per table, a restore over a populated database refused, and the fence sequence never observed going backwards. **Not verified:** a restore on a second machine while the first serves traffic |
-| Release (11) | Wheel builds, `SHA256SUMS` written, installed copy verified. **Not signed, not published** |
+| Release (11) | Wheel builds, `SHA256SUMS` written, installed copy verified, and `SHA256SUMS` **signed** with the key at `cshcli-release.pub`. **Not published** |
 | Deployment publish and rollback | Coordination complete, and the four acceptance checks run against a separate process and a real health socket. **No provider is configured and nothing has been published anywhere** |
 | Native direct OAuth | `ProviderAuth` implements PKCE, one-use state, exact loopback redirect and a local store, behind a review registry that is **empty on purpose**. No provider is eligible |
 | Personal data guard | Pre-commit hook and a **required** CI check; refuses personal emails, private relay addresses, user paths and a non-noreply identity. Reads the staged index and fails closed |
@@ -58,7 +59,7 @@ Observed environment: Windows with CPython 3.12.14. The interpreter path is
 machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests`
-returned **710 tests in 430.283 seconds**: 704 passing and 6 skipped. Every skip
+returned **712 tests in 432.855 seconds**: 706 passing and 6 skipped. Every skip
 says why: five symbolic link cases on a host that does not grant the
 privilege, and one POSIX file permission case that does not apply on Windows.
 The Windows junction cases run.
@@ -67,7 +68,7 @@ The Windows junction cases run.
 `unittest` prints `Ran <total>`, and the skip count is part of that total. A run
 without a database reports the *same* total with 26 skipped, not fewer tests, so
 "the suite passes N tests" was wrong twice over: it counted skipped tests as
-passing and it moved with the environment. Read it as **704 green of 710**, and
+passing and it moved with the environment. Read it as **706 green of 712**, and
 run it with `CSHCLI_REMOTE_DSN` pointing at the local cluster, because twenty
 tests that talk to PostgreSQL otherwise skip and prove nothing.
 
@@ -203,7 +204,7 @@ Two decisions about what the chat carries, each with a reason:
 | `cshcli serve --remote` over HTTPS with PostgreSQL | **Done here.** It binds, serves `/healthz` over TLS against a live PostgreSQL and refuses plain HTTP. The certificate is self-signed, so this proves the path, not public trust |
 | Standing the remote coordinator up and proving real concurrency | **Done on one machine.** Eleven independent processes race and one wins. Eleven *machines* still need a second one |
 | Chaos drills and a proven restore | **Done.** `pg_dump` and `pg_restore` into an empty database, counts compared, restore over a populated database refused, fence never rewound. A restore on a second machine is still unproven |
-| Signing and publishing the release | **Still no.** The artefact builds and has a checksum, but there is no signing identity. That is the owner's to create |
+| Signing and publishing the release | **Signing is done.** The owner authorised the key on 17 October 2026 and `release.py` signs by itself; the public key is at `cshcli-release.pub`. **Publishing is still manual** |
 | Requiring a queue entry to come from an accepted patch | Done. The queue refuses a commit with no accepted-patch record and one accepted with a different base, and rechecks acceptance immediately before the merge |
 | The chat starting from the folder it was opened in | Done. The first question carries a capped index of the files, `/buscar <texto>` finds where something lives, and `/ver <ruta>` reads one file into the conversation, all through `Workspace`. Tested through the real CLI entry point |
 

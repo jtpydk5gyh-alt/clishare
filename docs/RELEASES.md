@@ -34,30 +34,50 @@ Publishing is a manual step and stays manual while there is one owner.
 
 ## Signing
 
-The mechanism is installed and proven; **the key is the owner's to create**.
-A throwaway key was generated, used to sign `SHA256SUMS`, verified, and then
-deleted — proving the path end to end without creating an identity on anyone's
-behalf.
+**The signing key exists.** The owner authorised its creation on 17 October 2026,
+and `release.py` now signs by itself.
 
-`minisign` 0.12, verified against the public key published in the project's own
-README (`RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3`) before it
-was executed. Do that verification again on every machine; it takes one
-command and it is the whole point.
-
-Once the owner decides, the procedure is:
+The public key is committed at `cshcli-release.pub` and is the only part of the
+pair that ever leaves the owner's machine:
 
 ```
-minisign -G                                   # asks for a password
-minisign -S -m dist/SHA256SUMS -t "cshcli 0.9.0"
-minisign -Vm dist/SHA256SUMS -p minisign.pub
+untrusted comment: minisign public key 5BECC463E66EA9A4
+RWSkqW7mY8TsWwxeoiTSEHYJrTWUbthX8y1Kbnf8fZPW3smL3zue+nXl
 ```
 
-Publish `minisign.pub` next to the release. **Anyone can hold that file; the
-private key is the owner's**, and it should never be in the repository, in
-`.cshcli/`, or in a backup that syncs.
+Anyone can verify a download with that file alone:
+
+```
+minisign -Vm dist/SHA256SUMS -p cshcli-release.pub
+```
+
+Verified on this machine, in both directions, which is the point of doing it at
+all:
+
+- The signature on `SHA256SUMS` **verifies** with the published public key.
+- A **different** real public key **rejects** it, and minisign says why: the key
+  id does not match.
+- Changing **one byte** of `SHA256SUMS` invalidates the signature; restoring the
+  byte makes it verify again. A signature that cannot detect that is decoration.
+- `release.py --require-signature` **refuses** with exit code 1 when no key is
+  available, so publishing unsigned is a refusal and not a warning.
+
+`minisign` 0.12 was checked before use: version reported by the binary itself,
+and SHA-256 `5535be9e4e123831ebe6ef324aafe9dde507015c176191f9e20c3ad60567f9e1`.
+Do that check again on every machine.
+
+**The private key never goes in the repository, in `.cshcli/`, or in a backup
+that syncs.** If someone else obtains it, they can sign as this project forever
+and nothing downstream can tell the difference. It is password-protected, and
+the password is stored beside it rather than inside it, so both files need
+moving together.
 
 Signing `SHA256SUMS` and not the wheel is deliberate: one signature covers
 every artefact it lists, so adding a file later does not need a new key.
+
+The older key id `RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3`,
+formerly published in the README, **is not this project's key** and must not be
+used to verify anything here.
 
 ## `release.py` now signs by itself
 
