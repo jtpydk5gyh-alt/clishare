@@ -7,25 +7,70 @@ once it leaves alpha.
 
 ## [Unreleased]
 
+### Added
+- **`migrate.py --status`** lists every up migration and says whether it is
+  applied or pending, so the state of a database is readable without reading the
+  code.
+- **`schema_migrations`**, the ledger `migrate.py` now keeps. It records what has
+  been applied and a migration already recorded is skipped.
+
 ### Fixed
+- **The suite count was being read wrong, and the wrong number shipped.** Every
+  release note said the suite "passes N tests with 26 skipped", but `unittest`
+  prints `Ran <total>` and the skips are part of that total. `Ran 707 ... OK
+  (skipped=26)` meant **681 passing**, not 707. It also moved with the
+  environment: the total does not change when the database is down, twenty
+  tests simply stop running. Read correctly and run against a live PostgreSQL,
+  it is **710 tests, 704 passing, 6 skipped**, with the twenty PostgreSQL cases
+  actually exercised. Four documents carried the wrong figure.
+- **The guard's own tests published the owner's real user name.** The path
+  fixtures in `tests/test_guard.py` used `C:/Users/<real name>`, and that file is
+  exempt from the guard precisely because it has to contain what the guard
+  rejects. The fixtures now use a generic name. The pattern under test is the
+  *shape* `/Users/<something>/`, not the name, and that was checked in both
+  directions: neutralising the pattern makes three tests fail, and restoring it
+  makes them pass.
+  fixtures in `tests/test_guard.py` used `C:/Users/<real name>`, and that file is
+  exempt from the guard precisely because it has to contain what the guard
+  rejects. The fixtures now use a generic name. The pattern under test is the
+  *shape* `/Users/<something>/`, not the name, and that was checked in both
+  directions: neutralising the pattern makes three tests fail, and restoring it
+  makes them pass.
+- **`scripts/migrate.py` re-applied every migration on every run.** Harmless
+  only because `001_remote.sql` is idempotent, and a future migration that was
+  not would have run twice on the same database. Verified both ways against a
+  real PostgreSQL: a deliberately non-idempotent migration breaks when executed
+  twice by hand and is applied exactly once by the script. The first run against
+  a database that already had the schema behaves exactly as it did before and
+  then records it, so nothing is skipped by accident.
+- **The repository survived a PostgreSQL restart, and that had never been
+  checked.** The local cluster had been stopped for hours. Started it again and
+  confirmed the schema and the data survived: nine application tables with 64
+  events, 64 leases, 49 memberships, 57 projects and 57 users.
 - **A tracked test file started with a byte order mark.** `tests/test_validate_lease.py`
   carried a UTF-8 BOM committed in `#42`. Python's importer discards it, so nothing
   that runs today failed; any tool that read the file as `encoding="utf-8"` and parsed
-  it did, which is how it was found. It was the only one of 122 tracked files with a
-  BOM. `tests/test_encoding.py` now reads every tracked file from the index and fails
-  if one starts with a BOM or does not parse, so it cannot come back silently.
+  it did, which is how it was found. `tests/test_encoding.py` now reads every tracked
+  file from the index and fails if one starts with a BOM or does not parse.
 - **Documentation claimed infrastructure that had already been built.** The
   pending-work table in `docs/CONTEXT.md` still said `serve --remote` was "not
   possible, no server" and the remote coordinator was "not possible, no
   PostgreSQL", both of which stopped being true when the real PostgreSQL 16.2
-  work landed. Eight statements across `CONTEXT.md` and `PLAN-ONLINE.md` were
-  corrected, and `tests/test_docs_truth.py` now fails if a document declares
-  proven infrastructure absent in the present tense. It allows the past tense:
-  the reasoning that produced the original decisions is history and is kept.
+  work landed. Ten statements across `CONTEXT.md`, `PLAN-ONLINE.md` and
+  `PLAN-INFRA.md` were corrected, and `tests/test_docs_truth.py` now fails if a
+  document declares proven infrastructure absent in the present tense. It allows
+  the past tense: the reasoning behind those decisions is history and is kept.
 - **`docs/PLAN-NEXT.md`.** What remains, in one file: the signing key that is
   the owner's to create, the four proofs that need a second machine, the
   decisions that are closed by choice rather than by effort, and what has never
   been exercised against a real provider, a real release or a real deployment.
+
+### Known limitation
+- **The sandbox still does not exist.** No CPU, memory, process or network
+  limits, and arbitrary execution stays unimplemented by design. The mediated
+  runner validates the lease before every write and exposes no command
+  execution; building the runner itself needs a Linux container or VM whose
+  controls have been verified.
 
 ## [0.9.0] - 2026-10-16
 

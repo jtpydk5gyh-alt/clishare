@@ -58,12 +58,18 @@ Observed environment: Windows with CPython 3.12.14. The interpreter path is
 machine specific and is deliberately not recorded here.
 
 With `PYTHONPATH=src`, the command `python -m unittest discover -s tests`
-returned **707 passing tests in 395.694 seconds**, with 26 skipped. Every skip
+returned **710 tests in 430.283 seconds**: 704 passing and 6 skipped. Every skip
 says why: five symbolic link cases on a host that does not grant the
-privilege, one POSIX file permission case that does not apply on Windows, and
-twenty that need `CSHCLI_REMOTE_DSN` pointing at a real PostgreSQL. Those twenty
-**were run** against PostgreSQL 16.2 here, and passed. The Windows junction
-cases run.
+privilege, and one POSIX file permission case that does not apply on Windows.
+The Windows junction cases run.
+
+**How to read that count, because it was misread for several releases.**
+`unittest` prints `Ran <total>`, and the skip count is part of that total. A run
+without a database reports the *same* total with 26 skipped, not fewer tests, so
+"the suite passes N tests" was wrong twice over: it counted skipped tests as
+passing and it moved with the environment. Read it as **704 green of 710**, and
+run it with `CSHCLI_REMOTE_DSN` pointing at the local cluster, because twenty
+tests that talk to PostgreSQL otherwise skip and prove nothing.
 
 The two tests that used to fail under load are now independent of the machine:
 the capture test gives its child fifteen times the timeout, and the server

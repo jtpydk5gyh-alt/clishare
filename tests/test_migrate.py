@@ -97,13 +97,93 @@ class RepositoryMigrationTests(unittest.TestCase):
 class ApplyTests(unittest.TestCase):
     def setUp(self):
         self.dsn = os.environ.get("CSHCLI_TEST_DSN", "").strip()
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.folder = Path(self.temp.name)
 
-    def test_without_a_server_the_test_says_why_it_skips(self):
+    def require_database(self):
         if not self.dsn:
             self.skipTest("no hay CSHCLI_TEST_DSN: levanta el clúster con "
                           "python scripts/postgres_local.py start")
+        return self.dsn
+
+    def write(self, name, content):
+        target = self.folder / name
+        target.write_text(content, encoding="utf-8", newline="\n")
+        return target
+
+    def without_a_server_the_test_says_why_it_skips(self):
+        self.require_database()
         import psycopg
         psycopg.connect(self.dsn, connect_timeout=10).close()
+
+    def test_a_migration_is_applied_once_and_never_again(self):
+        dsn = self.require_database()
+        import psycopg
+        name = f"probe_{os.getpid()}_{id(self)}"
+        self.write(f"{name}.sql",
+                   f"CREATE TABLE {name} (id integer);")
+        with psycopg.connect(dsn, autocommit=True) as con:
+            con.execute(f"DROP TABLE IF EXISTS {name}")
+        try:
+            first = migrate.apply(dsn, self.folder)
+            second = migrate.apply(dsn, self.folder)
+            self.assertEqual(first, [f"{name}.sql"])
+            self.assertEqual(second, [],
+                             "una migracion ya registrada no puede volver a aplicarse")
+        finally:
+            with psycopg.connect(dsn, autocommit=True) as con:
+                con.execute(f"DROP TABLE IF EXISTS {name}")
+                con.execute(f"DELETE FROM {migrate.LEDGER} WHERE name = %s",
+                            (f"{name}.sql",))
+
+    def test_a_migration_that_is_not_idempotent_would_break_without_the_ledger(self):
+        dsn = self.require_database()
+        import psycopg
+        name = f"probe_strict_{os.getpid()}_{id(self)}"
+        self.write(f"{name}.sql", f"CREATE TABLE {name} (id integer);")
+        with psycopg.connect(dsn, autocommit=True) as con:
+            con.execute(f"DROP TABLE IF EXISTS {name}")
+        try:
+            migrate.apply(dsn, self.folder)
+            with psycopg.connect(dsn, autocommit=True) as con:
+                with self.assertRaises(Exception):
+                    con.execute(f"CREATE TABLE {name} (id integer);")
+            self.assertEqual(migrate.apply(dsn, self.folder), [])
+        finally:
+            with psycopg.connect(dsn, autocommit=True) as con:
+                con.execute(f"DROP TABLE IF EXISTS {name}")
+                con.execute(f"DELETE FROM {migrate.LEDGER} WHERE name = %s",
+                            (f"{name}.sql",))
+
+    def test_status_separates_applied_from_pending(self):
+        dsn = self.require_database()
+        import psycopg
+        name = f"probe_status_{os.getpid()}_{id(self)}"
+        self.write(f"{name}.sql", f"CREATE TABLE {name} (id integer);")
+        with psycopg.connect(dsn, autocommit=True) as con:
+            con.execute(f"DROP TABLE IF EXISTS {name}")
+        try:
+            self.assertEqual(dict(migrate.status(dsn, self.folder)),
+                             {f"{name}.sql": False})
+            migrate.apply(dsn, self.folder)
+            self.assertEqual(dict(migrate.status(dsn, self.folder)),
+                             {f"{name}.sql": True})
+        finally:
+            with psycopg.connect(dsn, autocommit=True) as con:
+                con.execute(f"DROP TABLE IF EXISTS {name}")
+                con.execute(f"DELETE FROM {migrate.LEDGER} WHERE name = %s",
+                            (f"{name}.sql",))
+
+    def test_the_ledger_is_itself_created_when_missing(self):
+        dsn = self.require_database()
+        import psycopg
+        with psycopg.connect(dsn, autocommit=True) as con:
+            con.execute(f"DROP TABLE IF EXISTS {migrate.LEDGER}")
+            migrate.ensure_ledger(con)
+            names = migrate.applied_names(con)
+            self.assertIsInstance(names, set)
+            con.execute(f"DROP TABLE IF EXISTS {migrate.LEDGER}")
 
 
 if __name__ == "__main__":
