@@ -87,5 +87,28 @@ class RealSigningTests(unittest.TestCase):
             release.sign(str(self.sums), str(self.signer), str(self.root / "no-existe.key"))
 
 
+class PublishedKeyTests(unittest.TestCase):
+    KEY_ID = "5BECC463E66EA9A4"
+
+    def test_the_public_key_that_verifies_the_release_is_in_the_repository(self):
+        published = Path(__file__).resolve().parents[1] / "cshcli-release.pub"
+        self.assertTrue(published.is_file(),
+                        "sin la clave publica publicada, la firma no significa nada "
+                        "para quien descarga")
+        lines = published.read_text(encoding="utf-8").strip().splitlines()
+        self.assertEqual(len(lines), 2, "una clave publica de minisign son dos lineas")
+        self.assertIn(self.KEY_ID, lines[0])
+        self.assertRegex(lines[1], r"^RW[A-Za-z0-9+/]{42,}$")
+
+    def test_the_private_key_is_not_in_the_repository(self):
+        root = Path(__file__).resolve().parents[1]
+        tracked = subprocess.run(["git", "ls-files", "-z"], cwd=root,
+                                 capture_output=True, text=True)
+        names = [n for n in tracked.stdout.split("\0") if n]
+        offenders = [n for n in names if n.endswith(".key") or n.endswith(".password.txt")]
+        self.assertEqual(offenders, [],
+                         "la clave privada y su contrasena no pueden estar trackeadas")
+
+
 if __name__ == "__main__":
     sys.exit(unittest.main())

@@ -31,7 +31,7 @@ actual.
   cero docstrings y un único comentario, el shebang de
   `scripts/push_rewritten_main.py`.
 - La última suite completa, **con PostgreSQL 16.2 en pie**, terminó con
-  **710 pruebas: 704 verdes y 6 omitidas con motivo, en 430.283 s**. Las seis
+  **712 pruebas: 706 verdes y 6 omitidas con motivo, en 432.855 s**. Las seis
   omitidas son cinco casos de symlink que esta máquina no concede y uno de
   permisos POSIX que no aplica en Windows. Sin base de datos se omiten veinte
   más, y por eso esta cuenta importa: **el total no baja por tener la base
@@ -52,10 +52,21 @@ direcciones: con el BOM presente lo detecta y lo nombra; ya retirado pasa.
 El recuento de ficheros **no se escribe aquí a propósito**: envejece con cada
 fichero nuevo, y `tests/test_encoding.py` ya lo mide en cada ejecución.
 
-El único bloqueo que requiere una decisión del propietario es la clave privada
-de firma. `scripts/release.py`, `minisign` y `CSHCLI_SIGNING_KEY` están
-instalados, automatizados y probados con una clave temporal ya eliminada. No se
-debe crear una identidad criptográfica permanente en nombre del propietario.
+**La clave de firma ya existe.** El propietario autorizó crearla el 17 de
+octubre de 2026, y esa era la única cosa que faltaba. `release.py` firma
+`SHA256SUMS` y la clave pública está commiteada en `cshcli-release.pub`, que es
+lo único que sale de la máquina del propietario.
+
+Comprobado en las dos direcciones: la firma verifica con la clave publicada,
+una clave real distinta la rechaza diciendo que el identificador no coincide, y
+cambiar **un byte** de `SHA256SUMS` invalida la firma. `--require-signature` se
+niega con código 1 sin clave, así que publicar sin firmar es un rechazo y no un
+aviso. La clave privada está protegida con contraseña y no entra nunca en el
+repositorio; hay un test que falla si algo terminado en `.key` o
+`.password.txt` llega a estar trackeado.
+
+La clave antigua `RWQf6LRCGA9i53...`, que estuvo publicada en el README, **no es
+de este proyecto** y no debe usarse para verificar nada.
 
 **Lo que se verificó el 17 de octubre por la tarde, y antes no se había hecho.**
 El clúster de PostgreSQL llevaba horas parado. Se levantó de nuevo y se comprobó
@@ -421,7 +432,7 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | Módulo Python | `cshcli`, 24 módulos más `__init__` y `__main__`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
 | PRs mergeadas | 80, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 710 en total: **704 verdes** y 6 omitidas con motivo, con PostgreSQL 16.2 en pie |
+| Pruebas | 712 en total: **706 verdes** y 6 omitidas con motivo, con PostgreSQL 16.2 en pie |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es

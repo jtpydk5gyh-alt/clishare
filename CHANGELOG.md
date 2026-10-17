@@ -8,6 +8,17 @@ once it leaves alpha.
 ## [Unreleased]
 
 ### Added
+- **The release is signed.** The owner authorised the key on 17 October 2026.
+  `release.py` signs `SHA256SUMS` when `CSHCLI_SIGNING_KEY` points at the private
+  key, and the public key is committed at `cshcli-release.pub` so anyone can
+  verify a download. Checked in both directions: the signature verifies with the
+  published key, a different real key is rejected with a key-id mismatch, and
+  changing one byte of `SHA256SUMS` invalidates it. `release.py
+  --require-signature` refuses with exit code 1 when no key is available, so
+  publishing unsigned is a refusal rather than a warning. The private key is
+  password-protected and never enters the repository; a test fails if anything
+  ending in `.key` or `.password.txt` is ever tracked.
+
 - **`migrate.py --status`** lists every up migration and says whether it is
   applied or pending, so the state of a database is readable without reading the
   code.
