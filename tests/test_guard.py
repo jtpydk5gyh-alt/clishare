@@ -78,9 +78,9 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(guard.scan([name], ""), ([], []))
 
     def test_system_user_paths_are_flagged(self):
-        for content in ("path: C:/Users/67gang/Documents\n",
-                        "path: /home/67gang/project\n",
-                        "path: /Users/67gang/project\n"):
+        for content in ("path: C:/Users/ana/Documents\n",
+                        "path: /home/ana/project\n",
+                        "path: /Users/ana/project\n"):
             with self.subTest(content=content):
                 name = self.write("doc.md", content)
                 findings, _ = guard.scan([name], "")

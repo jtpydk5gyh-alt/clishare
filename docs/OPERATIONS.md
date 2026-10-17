@@ -9,7 +9,7 @@ real user near it.
 | --- | --- |
 | Sessions, expiry and revocation | Verified locally |
 | Mediated writes and the publication gate | Verified locally |
-| PostgreSQL storage | **Verified** against a real server: 16.2, nine tables, migration applied and the schema checked afterwards |
+| PostgreSQL storage | **Verified** against a real server: 16.2, nine application tables plus the `schema_migrations` ledger, migration applied and the schema checked afterwards |
 | Eleven concurrent processes against a real database | **Verified.** The test runs, and exactly one of eleven processes wins |
 | Restore into an empty database | **Verified** with `pg_dump` and `pg_restore`: row counts match, restoring over a populated database is refused, and the fence never goes backwards |
 | HTTPS | **Verified on loopback** with a self-signed certificate: the server starts, answers `/healthz` over TLS and refuses plain HTTP |
@@ -67,7 +67,8 @@ python scripts/migrate.py
 ```
 
 It takes `CSHCLI_REMOTE_DSN`, applies every `migrations/*.sql` that is not a
-rollback, and then **checks that the nine tables are really there**. A file
+rollback, and then **checks that the nine application tables are really
+there**. A file
 whose text contains `DROP` is refused outright: the migration and its rollback
 are separate files on purpose, and mixing them is how a deploy ends up with no
 schema at all.

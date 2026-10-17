@@ -9,6 +9,12 @@ MIGRATIONS = ROOT / "migrations"
 EXPECTED_TABLES = ("users", "projects", "memberships", "invitations", "leases",
                    "memory", "authorization_grants", "sessions", "events")
 DESTRUCTIVE = ("drop table", "drop sequence", "drop schema", "truncate ")
+LEDGER = "schema_migrations"
+LEDGER_DDL = (
+    f"CREATE TABLE IF NOT EXISTS {LEDGER} ("
+    "name text PRIMARY KEY, "
+    "applied_at timestamptz NOT NULL DEFAULT now())"
+)
 
 
 class MigrationError(RuntimeError):
@@ -46,7 +52,22 @@ def missing_tables(connection) -> list:
     return [name for name in EXPECTED_TABLES if name not in present]
 
 
-def apply(dsn: str, folder: Path = MIGRATIONS) -> list:
+def ensure_ledger(connection) -> None:
+    connection.execute(LEDGER_DDL)
+
+
+def applied_names(connection) -> set:
+    ensure_ledger(connection)
+    rows = connection.execute(f"SELECT name FROM {LEDGER}").fetchall()
+    return {row[0] for row in rows}
+
+
+def pending(folder: Path = MIGRATIONS, connection=None) -> list:
+    done = applied_names(connection)
+    return [path for path in up_migrations(folder) if path.name not in done]
+
+
+def _connect(dsn: str):
     if not dsn:
         raise MigrationError("falta el DSN: pon CSHCLI_REMOTE_DSN")
     try:
@@ -57,11 +78,22 @@ def apply(dsn: str, folder: Path = MIGRATIONS) -> list:
         connection = psycopg.connect(dsn, connect_timeout=15)
     except Exception as error:
         raise MigrationError(f"no se pudo conectar: {error}") from None
+    connection.autocommit = True
+    return connection
+
+
+def apply(dsn: str, folder: Path = MIGRATIONS) -> list:
+    connection = _connect(dsn)
     applied = []
     try:
-        connection.autocommit = True
+        done = applied_names(connection)
         for path in up_migrations(folder):
+            if path.name in done:
+                continue
             connection.execute(path.read_text(encoding="utf-8"))
+            connection.execute(
+                f"INSERT INTO {LEDGER} (name) VALUES (%s) "
+                "ON CONFLICT (name) DO NOTHING", (path.name,))
             applied.append(path.name)
         absent = missing_tables(connection)
         if absent:
@@ -71,12 +103,30 @@ def apply(dsn: str, folder: Path = MIGRATIONS) -> list:
     return applied
 
 
+def status(dsn: str, folder: Path = MIGRATIONS) -> list:
+    connection = _connect(dsn)
+    try:
+        done = applied_names(connection)
+    finally:
+        connection.close()
+    return [(path.name, path.name in done) for path in up_migrations(folder)]
+
+
 def main(argv: list) -> int:
     if len(argv) > 1 and argv[1] in {"-h", "--help"}:
-        print("usage: migrate.py [DSN]")
+        print("usage: migrate.py [DSN] [--status]")
         return 0
-    dsn = argv[1] if len(argv) > 1 else dsn_from_environment()
+    wanted_status = "--status" in argv[1:]
+    dsn = next((item for item in argv[1:] if not item.startswith("-")),
+               dsn_from_environment())
     try:
+        if wanted_status:
+            rows = status(dsn)
+            for name, done in rows:
+                print(f"  {'aplicada' if done else 'pendiente'}  {name}")
+            if not rows:
+                print("  no hay migraciones de subida")
+            return 0
         applied = apply(dsn)
     except MigrationError as error:
         print(f"migrate: {error}", file=sys.stderr)

@@ -10,14 +10,14 @@ Este bloque prevalece sobre cualquier fotografía histórica contradictoria que
 permanezca más abajo. No reinterpretar los estados antiguos como el estado
 actual.
 
-- `origin/main` está en `fd3bc96`, el squash del **PR #79** después de reescribir
-  los mensajes al inglés. Es la versión **0.9.0** y tiene **73 commits**. Los
-  cuatro últimos PRs, del **#76** al **#79**, pasaron **14 checks** en verde cada
-  uno y se fusionaron por squash sin `--admin`.
-- Ese SHA es el del **último squash fusionado en el momento de escribir esta
-  línea**. Envejece con la siguiente fusión, y también con un force-push: el
-  17 de octubre `main` pasó de `a5a8bb3` a `fd3bc96` sin que cambiara ni un byte
-  del contenido. Antes de fiarse de él, comprobar `git log -1 --oneline` y
+- `origin/main` está en `119587d`, el squash del **PR #80**. Es la versión
+  **0.9.0** y tiene **74 commits**. Los cinco últimos PRs, del **#76** al **#80**,
+  pasaron **14 checks** en verde cada uno y se fusionaron por squash sin
+  `--admin`.
+- Ese SHA y ese recuento **envejécen con la siguiente fusión**, y el SHA también
+  con un force-push: el 17 de octubre `main` pasó de `a5a8bb3` a `fd3bc96` sin
+  que cambiara ni un byte del contenido. No reescribas estas cifras a mano cada
+  vez; antes de fiarse de ellas, comprobar `git log -1 --oneline` y
   `git rev-list --count origin/main`. Lo que no envejéce es lo de abajo.
 - La rama local está sincronizada con el remoto y el árbol está limpio. Solo hay
   un worktree registrado, el principal. No hay agentes trabajando ni otro
@@ -30,15 +30,18 @@ actual.
 - La regla de cero comentarios y docstrings se cumple ya en todo el árbol:
   cero docstrings y un único comentario, el shebang de
   `scripts/push_rewritten_main.py`.
-- La última suite completa terminó con **707 pruebas verdes y 26 omitidas con
-  motivo en 395.694 s**. Las 20 pruebas que dependen de PostgreSQL también se
-  ejecutaron contra PostgreSQL 16.2 real y pasaron. El CI del PR #76 repitió la
-  suite en Windows y Linux × Python 3.11, 3.12 y 3.13: **14 checks en verde**.
+- La última suite completa, **con PostgreSQL 16.2 en pie**, terminó con
+  **710 pruebas: 704 verdes y 6 omitidas con motivo, en 430.283 s**. Las seis
+  omitidas son cinco casos de symlink que esta máquina no concede y uno de
+  permisos POSIX que no aplica en Windows. Sin base de datos se omiten veinte
+  más, y por eso esta cuenta importa: **el total no baja por tener la base
+  apagada, cambia cuántas se ejecutan de verdad**. El CI repite la suite en
+  Windows y Linux × Python 3.11, 3.12 y 3.13 en cada push: **14 checks**.
 
 **Un defecto real que encontró la auditoría, ya corregido:**
 `tests/test_validate_lease.py` **empezaba por un BOM (U+FEFF) commiteado en
-`main` desde el PR #42** (`0877cf1`). Era el único fichero con BOM de los 122
-trackeados. No rompía nada de lo que se ejecutaba: el importador de Python
+`main` desde el PR #42** (`0877cf1`). Era el **único** fichero con BOM de todo el
+repositorio. No rompía nada de lo que se ejecutaba: el importador de Python
 descarta el BOM, `compileall` pasaba y los tests lo importaban igual. Rompía
 cualquier herramienta que lo leyera con `encoding="utf-8"` y lo parseara, que es
 justo lo que le pasó a la auditoría de comentarios. Se quitaron los tres bytes y
@@ -46,10 +49,33 @@ justo lo que le pasó a la auditoría de comentarios. Se quitaron los tres bytes
 si alguno vuelve a empezar por un BOM o deja de parsear. Comprobado en las dos
 direcciones: con el BOM presente lo detecta y lo nombra; ya retirado pasa.
 
+El recuento de ficheros **no se escribe aquí a propósito**: envejece con cada
+fichero nuevo, y `tests/test_encoding.py` ya lo mide en cada ejecución.
+
 El único bloqueo que requiere una decisión del propietario es la clave privada
 de firma. `scripts/release.py`, `minisign` y `CSHCLI_SIGNING_KEY` están
 instalados, automatizados y probados con una clave temporal ya eliminada. No se
 debe crear una identidad criptográfica permanente en nombre del propietario.
+
+**Lo que se verificó el 17 de octubre por la tarde, y antes no se había hecho.**
+El clúster de PostgreSQL llevaba horas parado. Se levantó de nuevo y se comprobó
+que el esquema y los datos **sobrevivieron a un reinicio completo**: nueve
+tablas con 64 eventos, 64 leases, 49 membresías, 57 proyectos y 57 usuarios. Los
+conteos de siempre venían de una ejecución anterior de las pruebas; que el
+almacenamiento sobreviva al apagado es un hecho distinto, y ahora está dicho.
+
+También se descubrió que `scripts/migrate.py` **no lleva registro**: reaplica
+todas las migraciones en cada ejecución. Hoy es inocuo porque `001_remote.sql`
+tiene doce `IF NOT EXISTS`, y se comprobó ejecutándolo dos veces seguidas sin
+cambiar nada. Pero la próxima migración **tiene que ser idempotente**, porque
+nada impedirá que se aplique dos veces.
+
+Y una corrección de privacidad: `tests/test_guard.py` usaba el **nombre de
+usuario real del propietario** en sus rutas de prueba, y eso está publicado en un
+repositorio que existe para no publicar datos personales. Ahora las fixtures usan
+un nombre genérico. El patrón que se comprueba es la forma `/Users/<algo>/`, no
+el nombre, así que el control sigue detectando lo mismo: neutralizar el patrón de
+rutas hace fallar tres pruebas, comprobado en las dos direcciones.
 
 Continúan declaradamente sin verificar: once máquinas reales en lugar de once
 procesos, una segunda máquina, una cadena TLS pública y un restore mientras otra
@@ -196,7 +222,7 @@ podía verse sin una base de datos real**.
 
 | Qué | Evidencia |
 | --- | --- |
-| PostgreSQL real | 16.2 en Windows, nueve tablas y la secuencia de fences |
+| PostgreSQL real | 16.2 en Windows, nueve tablas de aplicación más el registro `schema_migrations`, y la secuencia de fences |
 | Concurrencia | once procesos independientes, `file:src` contra `file:src/a.py`, **gana exactamente uno**, y en la base queda una sola lease |
 | Restore | `pg_dump`/`pg_restore` sobre base vacía, recuento por tabla, **restaurar sobre base poblada se rechaza**, y el fence nunca retrocede |
 | HTTPS | `serve --remote` levanta, `/healthz` responde por TLS con `database: postgresql`; el HTTP plano se rechaza y un cliente que no confía en el certificado se rechaza en el handshake |
@@ -363,7 +389,7 @@ que se sincronice. El procedimiento está en `docs/RELEASES.md`.
 ## Dónde está el proyecto hoy
 
 **Versión 0.9.0, construida localmente con checksum; no publicada ni firmada.**
-73 commits en `origin/main`, todos con noreply. La suite local actual y sus
+74 commits en `origin/main`, todos con noreply. La suite local actual y sus
 omisiones justificadas se registran abajo. CI verde en Windows y Linux × Python
 3.11, 3.12 y 3.13. Un solo ruleset, `main-integrity`, con `Personal data
 guard` como control obligatorio.
@@ -391,11 +417,11 @@ hechos; **el paso 4, `serve --remote`, necesita una máquina**.
 | --- | --- |
 | Repositorio | `jtpydk5gyh-alt/cshcli`, público, licencia MIT |
 | Versión | `0.9.0`, artefacto local con `dist/SHA256SUMS`; no publicado ni firmado |
-| Rama por defecto | `main`, 73 commits en `origin/main`, todos con la noreply de GitHub |
+| Rama por defecto | `main`, 74 commits en `origin/main`, todos con la noreply de GitHub |
 | Módulo Python | `cshcli`, 24 módulos más `__init__` y `__main__`, comando `cshcli`, script `scripts/cshcli.py` |
 | Estado local | `.cshcli/`, ignorado por git |
-| PRs mergeadas | 78, sin `--admin`: el control obligatorio se respeta |
-| Pruebas | 707 verdes; 26 omitidas con motivo: 20 necesitan `CSHCLI_REMOTE_DSN` y **se ejecutaron** contra PostgreSQL 16.2 |
+| PRs mergeadas | 80, sin `--admin`: el control obligatorio se respeta |
+| Pruebas | 710 en total: **704 verdes** y 6 omitidas con motivo, con PostgreSQL 16.2 en pie |
 | CI | verde en Windows y Linux × Python 3.11, 3.12, 3.13 |
 
 ## Qué es y qué no es

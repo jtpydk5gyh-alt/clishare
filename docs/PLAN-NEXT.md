@@ -1,6 +1,6 @@
 # Plan: what remains
 
-Written on 17 October 2026 against `main` at `fd3bc96`, version 0.9.0, 73
+Written on 17 October 2026 against `main` at `119587d`, version 0.9.0, 74
 commits, CI green on Windows and Linux across Python 3.11, 3.12 and 3.13.
 That hash was the tip when this file was written, before the plan's own pull
 request merged; verify with `git log -1`.
